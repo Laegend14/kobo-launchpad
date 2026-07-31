@@ -14,6 +14,7 @@ export interface TokenRecord {
   pair_address?: string;
   created_at: string;
   description?: string;
+  raisedCngn?: number;
 }
 
 export interface TradeRecord {
