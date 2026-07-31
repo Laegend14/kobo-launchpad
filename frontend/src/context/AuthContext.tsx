@@ -69,19 +69,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [tradesMap, setTradesMap] = useState<Record<string, TradeItem[]>>(INITIAL_TRADES);
 
   useEffect(() => {
-    const savedWallet = localStorage.getItem('kobo_wallet');
-    const savedBalance = localStorage.getItem('kobo_balance');
-    const savedTokens = localStorage.getItem('kobo_tokens');
-    const savedTrades = localStorage.getItem('kobo_trades');
+    const syncState = () => {
+      const savedWallet = localStorage.getItem('kobo_wallet');
+      const savedBalance = localStorage.getItem('kobo_balance');
+      const savedTokens = localStorage.getItem('kobo_tokens');
+      const savedTrades = localStorage.getItem('kobo_trades');
 
-    if (savedWallet) setWalletAddress(savedWallet);
-    if (savedBalance) setCngnBalance(parseFloat(savedBalance));
-    if (savedTokens) {
-      try { setTokens(JSON.parse(savedTokens)); } catch (e) {}
-    }
-    if (savedTrades) {
-      try { setTradesMap(JSON.parse(savedTrades)); } catch (e) {}
-    }
+      if (savedWallet) setWalletAddress(savedWallet);
+      if (savedBalance) setCngnBalance(parseFloat(savedBalance));
+      if (savedTokens) {
+        try { setTokens(JSON.parse(savedTokens)); } catch (e) {}
+      }
+      if (savedTrades) {
+        try { setTradesMap(JSON.parse(savedTrades)); } catch (e) {}
+      }
+    };
+
+    syncState();
+    window.addEventListener('storage', syncState);
+    return () => window.removeEventListener('storage', syncState);
   }, []);
 
   const login = (customAddr?: string) => {

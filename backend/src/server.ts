@@ -200,11 +200,44 @@ app.get('/api/leaderboard', (req: Request, res: Response) => {
   const sorted = [...inMemStore.tokens].map((t, idx) => ({
     rank: idx + 1,
     ...t,
-    volume24h: `₦${(Math.random() * 45000000 + 5000000).toFixed(0)}`,
-    marketCap: `₦${(Math.random() * 90000000 + 10000000).toFixed(0)}`,
-    holders: Math.floor(Math.random() * 1200 + 150)
+    metrics: deriveBackendMetrics(t)
   }));
   res.json({ leaderboard: sorted });
+});
+
+// 11. POST /api/trades - Record a new trade (shared globally)
+app.post('/api/trades', (req: Request, res: Response) => {
+  const { tokenAddress, traderWallet, side, cngnAmount, tokenAmount, price, txHash } = req.body;
+  if (!tokenAddress || !traderWallet || !side || !cngnAmount) {
+    return res.status(400).json({ error: "Missing trade parameters" });
+  }
+
+  const newTrade: TradeRecord = {
+    id: inMemStore.trades.length + 1,
+    token_address: tokenAddress.toLowerCase(),
+    trader_wallet: traderWallet,
+    side,
+    cngn_amount: String(cngnAmount),
+    token_amount: String(tokenAmount),
+    price: String(price),
+    tx_hash: txHash || `0x${Math.random().toString(16).substring(2)}${Date.now().toString(16)}`,
+    created_at: new Date().toISOString()
+  };
+
+  inMemStore.trades.unshift(newTrade);
+
+  // Update token raised reserve
+  const token = inMemStore.tokens.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
+  if (token) {
+    if (side === 'buy') {
+      token.raisedCngn = (token.raisedCngn || 0) + Number(cngnAmount);
+      if (token.raisedCngn >= 50000) token.migrated = true;
+    } else {
+      token.raisedCngn = Math.max(0, (token.raisedCngn || 0) - Number(cngnAmount));
+    }
+  }
+
+  res.status(201).json({ trade: newTrade });
 });
 
 app.listen(port, () => {
