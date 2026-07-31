@@ -7,7 +7,7 @@ import CurveProgressBar from '@/components/CurveProgressBar';
 import { useAuth } from '@/context/AuthContext';
 
 export default function HomeFeedPage() {
-  const { tokens, isLoggedIn, login, getTokenMetrics } = useAuth();
+  const { tokens, isLoggedIn, login, connectRealWeb3Wallet, getTokenMetrics } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'bonding' | 'migrated'>('all');
 
@@ -52,10 +52,10 @@ export default function HomeFeedPage() {
 
             {!isLoggedIn && (
               <button
-                onClick={() => login()}
+                onClick={() => connectRealWeb3Wallet().catch(() => login())}
                 className="px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs sm:text-sm transition-all"
               >
-                Connect Wallet / Login
+                Connect Web3 Wallet
               </button>
             )}
           </div>

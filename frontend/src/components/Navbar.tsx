@@ -23,13 +23,25 @@ import CngnDepositModal from './CngnDepositModal';
 import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
-  const { isLoggedIn, walletAddress, cngnBalance, logout } = useAuth();
+  const { isLoggedIn, walletAddress, cngnBalance, logout, connectRealWeb3Wallet } = useAuth();
   
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isDepositOpen, setIsDepositOpen] = useState(false);
   const [isCngnDepositOpen, setIsCngnDepositOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const handleConnectWallet = async () => {
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
+      try {
+        await connectRealWeb3Wallet();
+      } catch (e) {
+        setIsLoginOpen(true);
+      }
+    } else {
+      setIsLoginOpen(true);
+    }
+  };
 
   const truncatedAddress = walletAddress 
     ? `${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`
@@ -139,7 +151,7 @@ export default function Navbar() {
                 </>
               ) : (
                 <button
-                  onClick={() => setIsLoginOpen(true)}
+                  onClick={handleConnectWallet}
                   className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs sm:text-sm flex items-center space-x-2 shadow-lg shadow-emerald-500/20 transition-all"
                 >
                   <Wallet className="w-4 h-4" />
@@ -231,7 +243,7 @@ export default function Navbar() {
                 </>
               ) : (
                 <button
-                  onClick={() => { setIsLoginOpen(true); setIsMobileMenuOpen(false); }}
+                  onClick={() => { handleConnectWallet(); setIsMobileMenuOpen(false); }}
                   className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-slate-950 font-bold text-sm"
                 >
                   Connect Wallet / Login
