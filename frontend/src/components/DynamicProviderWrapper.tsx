@@ -73,21 +73,17 @@ export default function DynamicProviderWrapper({ children }: { children: React.R
     }
   }, []);
 
-  if (!mounted || !client) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    );
-  }
-
   return (
     <QueryClientProvider client={queryClient}>
       <SafeErrorBoundary>
-        <DynamicProvider client={client}>
-          <WaasBootstrap />
-          {children}
-        </DynamicProvider>
+        {mounted && client ? (
+          <DynamicProvider client={client}>
+            <WaasBootstrap />
+            {children}
+          </DynamicProvider>
+        ) : (
+          children
+        )}
       </SafeErrorBoundary>
     </QueryClientProvider>
   );
