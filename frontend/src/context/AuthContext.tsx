@@ -112,6 +112,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('storage', syncState);
   }, []);
 
+  // Real-time backend API global trade & reserve polling (syncs across all accounts & devices)
+  useEffect(() => {
+    const fetchGlobalSync = async () => {
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+        const res = await fetch(`${backendUrl}/api/trades`);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        if (data.trades && Array.isArray(data.trades)) {
+          const newMap: Record<string, TradeItem[]> = {};
+          for (const tr of data.trades) {
+            const addr = (tr.token_address || '').toLowerCase();
+            if (!addr) continue;
+            if (!newMap[addr]) newMap[addr] = [];
+            newMap[addr].push({
+              id: String(tr.id || Math.random()),
+              token_address: tr.token_address,
+              trader_wallet: tr.trader_wallet,
+              side: tr.side,
+              cngn_amount: Number(tr.cngn_amount),
+              token_amount: Number(tr.token_amount),
+              price: Number(tr.price),
+              timestamp: new Date(tr.created_at || Date.now()).getTime(),
+              tx_hash: tr.tx_hash || '0x...'
+            });
+          }
+
+          setTradesMap(prev => {
+            const merged = { ...prev };
+            for (const [addr, trades] of Object.entries(newMap)) {
+              const existingIds = new Set((merged[addr] || []).map(t => t.id));
+              const toAdd = trades.filter(t => !existingIds.has(t.id));
+              if (toAdd.length > 0) {
+                merged[addr] = [...toAdd, ...(merged[addr] || [])];
+              }
+            }
+            return merged;
+          });
+        }
+
+        if (data.tokens && Array.isArray(data.tokens)) {
+          setTokens(prev => {
+            return prev.map(t => {
+              const bToken = data.tokens.find((bt: any) => bt.address.toLowerCase() === t.address.toLowerCase());
+              if (bToken) {
+                return {
+                  ...t,
+                  raisedCngn: bToken.raisedCngn !== undefined ? bToken.raisedCngn : t.raisedCngn,
+                  migrated: bToken.migrated !== undefined ? bToken.migrated : t.migrated
+                };
+              }
+              return t;
+            });
+          });
+        }
+      } catch (e) {}
+    };
+
+    fetchGlobalSync();
+    const interval = setInterval(fetchGlobalSync, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
   const connectRealWeb3Wallet = async (): Promise<string> => {
     if (typeof window !== 'undefined' && (window as any).ethereum) {
       try {
@@ -272,6 +336,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
+    // Post trade to backend API for global cross-account sync
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+    fetch(`${backendUrl}/api/trades`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tokenAddress,
+        traderWallet: walletAddress || '0xUser...48f2',
+        side: 'buy',
+        cngnAmount,
+        tokenAmount: Math.round(tokensOut),
+        price: executionPrice,
+        txHash: newTrade.tx_hash
+      })
+    }).catch(err => console.warn("Backend trade sync notice:", err));
+
     return { tokensOut, priceImpact: priceImpactPercent };
   };
 
@@ -326,6 +406,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('kobo_trades', JSON.stringify(next));
       return next;
     });
+
+    // Post trade to backend API for global cross-account sync
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+    fetch(`${backendUrl}/api/trades`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tokenAddress,
+        traderWallet: walletAddress || '0xUser...48f2',
+        side: 'sell',
+        cngnAmount: Number(cngnOut.toFixed(2)),
+        tokenAmount,
+        price: executionPrice,
+        txHash: newTrade.tx_hash
+      })
+    }).catch(err => console.warn("Backend trade sync notice:", err));
 
     return { cngnOut, priceImpact: priceImpactPercent };
   };

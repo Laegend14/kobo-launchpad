@@ -240,6 +240,11 @@ app.post('/api/trades', (req: Request, res: Response) => {
   res.status(201).json({ trade: newTrade });
 });
 
+// 12. GET /api/trades - All global trades across tokens
+app.get('/api/trades', (req: Request, res: Response) => {
+  res.json({ trades: inMemStore.trades, tokens: inMemStore.tokens });
+});
+
 app.listen(port, () => {
   console.log(`Kobo Launchpad Backend running on http://localhost:${port}`);
 });
