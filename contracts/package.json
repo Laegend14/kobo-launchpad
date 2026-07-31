@@ -1,0 +1,18 @@
+{
+  "name": "kobo-contracts",
+  "version": "0.1.0",
+  "description": "Smart contracts for Kobo Naira-Native Memecoin Launchpad",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.ts --network baseSepolia"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.1"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.4",
+    "typescript": "^5.3.3"
+  }
+}

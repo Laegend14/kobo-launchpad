@@ -1,0 +1,14 @@
+{
+  "network": "arcTestnet",
+  "chainId": "5042002",
+  "cngnAddress": "0xe634A98791a83951E3452B2c8B1072e98C03A93F",
+  "factoryAddress": "0x5F7ddCc6b96FDbad152022be372AE4d35cF145ae",
+  "routerAddress": "0x844949d930b1A9a34e9B9D2a5E1F883a27399634",
+  "tokenFactoryAddress": "0xA1E20bed244Ddd60486195e917EE8D741Fe28618",
+  "sampleToken": {
+    "address": "0x9EB4d17b401AC28024ee557D5D1947cF0Ddcd301",
+    "curveAddress": "0xe18BB79fC5C0C9759B3A3e6C273c80D010a3F503",
+    "symbol": "JOFF"
+  },
+  "deployedAt": "2026-07-31T18:13:57.933Z"
+}
