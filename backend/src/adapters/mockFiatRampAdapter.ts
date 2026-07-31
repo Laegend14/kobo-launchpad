@@ -39,7 +39,7 @@ export class MockFiatRampAdapter implements FiatRampAdapter {
 
     const txHash = `0xmock${Math.random().toString(16).substring(2)}${Date.now().toString(16)}`;
     deposit.status = 'completed';
-    deposit.txHash = txHash;
+    deposit.tx_hash = txHash;
 
     const walletLower = deposit.user_wallet.toLowerCase();
     this.userBalances[walletLower] = (this.userBalances[walletLower] || 0) + Number(deposit.amount_naira);
@@ -53,7 +53,7 @@ export class MockFiatRampAdapter implements FiatRampAdapter {
         const contract = new ethers.Contract(process.env.MOCKCNGN_ADDRESS, abi, wallet);
         const tx = await contract.faucetMint(deposit.user_wallet, ethers.parseEther(deposit.amount_naira.toString()));
         const receipt = await tx.wait();
-        deposit.txHash = receipt.hash;
+        deposit.tx_hash = receipt.hash;
         return { txHash: receipt.hash };
       } catch (err) {
         console.warn("On-chain faucetMint skipped or failed, using simulated mint:", err);
