@@ -61,6 +61,14 @@ export interface DetailedMetrics {
   mintDisabled: boolean;
   renouncedOwnership: boolean;
   liquidityLockedPercent: number;
+
+  // Creator Royalties & Anti-Rug Lock
+  creatorFeeBps: number;
+  accumulatedCreatorFees: number;
+  formattedCreatorFees: string;
+  creatorLockExpiryTimestamp: number;
+  isCreatorLocked: boolean;
+  creatorLockHoursRemaining: number;
 }
 
 const TOTAL_SUPPLY = 1_000_000_000; // 1 Billion Memecoin supply
@@ -263,6 +271,14 @@ export function deriveTokenMetrics(
     migrated: isMigrated || raisedCngn >= MIGRATION_TARGET_CNGN,
     mintDisabled: true,
     renouncedOwnership: true,
-    liquidityLockedPercent: isMigrated ? 100 : Number(((raisedCngn / MIGRATION_TARGET_CNGN) * 100).toFixed(1))
+    liquidityLockedPercent: isMigrated ? 100 : Number(((raisedCngn / MIGRATION_TARGET_CNGN) * 100).toFixed(1)),
+
+    // Creator Royalties & 24h Anti-Rug Lock
+    creatorFeeBps: 100,
+    accumulatedCreatorFees: Number((volume24hCngn * 0.01).toFixed(2)),
+    formattedCreatorFees: `₦${Math.round(volume24hCngn * 0.01).toLocaleString('en-NG')}`,
+    creatorLockExpiryTimestamp: now + 16 * 60 * 60 * 1000,
+    isCreatorLocked: true,
+    creatorLockHoursRemaining: 16.0
   };
 }

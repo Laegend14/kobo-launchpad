@@ -61,27 +61,27 @@ describe("Kobo Naira-Native Memecoin Launchpad", function () {
 
     const initialPrice = await curve.getCurrentPrice();
 
-    // Alice buys 1,000 cNGN worth of AFRO
+    // Bob (non-creator) buys 1,000 cNGN worth of AFRO
     const cngnAmount = ethers.parseEther("1000");
-    await mockCNGN.connect(alice).approve(curveAddress, cngnAmount);
+    await mockCNGN.connect(bob).approve(curveAddress, cngnAmount);
 
     const quoteOut = await curve.quoteBuy(cngnAmount);
     expect(quoteOut).to.be.gt(0);
 
-    await curve.connect(alice).buy(cngnAmount, quoteOut);
+    await curve.connect(bob).buy(cngnAmount, quoteOut);
 
-    const aliceTokenBalance = await token.balanceOf(alice.address);
-    expect(aliceTokenBalance).to.equal(quoteOut);
+    const bobTokenBalance = await token.balanceOf(bob.address);
+    expect(bobTokenBalance).to.equal(quoteOut);
 
     const postBuyPrice = await curve.getCurrentPrice();
     expect(postBuyPrice).to.be.gt(initialPrice);
 
-    // Alice sells half her tokens back
-    const sellAmount = aliceTokenBalance / 2n;
-    await token.connect(alice).approve(curveAddress, sellAmount);
+    // Bob sells half his tokens back
+    const sellAmount = bobTokenBalance / 2n;
+    await token.connect(bob).approve(curveAddress, sellAmount);
     const cngnQuote = await curve.quoteSell(sellAmount);
 
-    await curve.connect(alice).sell(sellAmount, cngnQuote);
+    await curve.connect(bob).sell(sellAmount, cngnQuote);
 
     const postSellPrice = await curve.getCurrentPrice();
     expect(postSellPrice).to.be.lt(postBuyPrice);
@@ -94,11 +94,11 @@ describe("Kobo Naira-Native Memecoin Launchpad", function () {
 
     const curve = await ethers.getContractAt("BondingCurve", curveAddress);
 
-    // Alice buys 50,000 cNGN to hit migration threshold
-    const buyAmount = ethers.parseEther("50000");
-    await mockCNGN.connect(alice).approve(curveAddress, buyAmount);
+    // Bob buys 51,000 cNGN to hit net 50,000 cNGN migration threshold (after 1% creator fee)
+    const buyAmount = ethers.parseEther("51000");
+    await mockCNGN.connect(bob).approve(curveAddress, buyAmount);
 
-    await curve.connect(alice).buy(buyAmount, 0);
+    await curve.connect(bob).buy(buyAmount, 0);
 
     expect(await curve.migrated()).to.be.true;
     const pairAddress = await curve.uniswapPair();
@@ -112,5 +112,55 @@ describe("Kobo Naira-Native Memecoin Launchpad", function () {
     // Subsequent buys on bonding curve must revert post-migration
     await mockCNGN.connect(bob).approve(curveAddress, ethers.parseEther("100"));
     await expect(curve.connect(bob).buy(ethers.parseEther("100"), 0)).to.be.revertedWith("Token already migrated to AMM");
+  });
+
+  it("Should collect 1% creator fees on trades and allow creator to claim fees", async function () {
+    await tokenFactory.connect(alice).launchToken("Suya Coin", "SUYA", "ipfs://QmSuya");
+    const tokenAddress = await tokenFactory.allTokens(0);
+    const curveAddress = await tokenFactory.tokenToCurve(tokenAddress);
+    const curve = await ethers.getContractAt("BondingCurve", curveAddress);
+
+    // Bob buys 10,000 cNGN worth of SUYA
+    const buyAmount = ethers.parseEther("10000");
+    await mockCNGN.connect(bob).approve(curveAddress, buyAmount);
+    await curve.connect(bob).buy(buyAmount, 0);
+
+    // Expected 1% fee = 100 cNGN
+    const accumulatedFees = await curve.accumulatedCreatorFees();
+    expect(accumulatedFees).to.equal(ethers.parseEther("100"));
+
+    // Alice (creator) claims creator fees
+    const aliceBalanceBefore = await mockCNGN.balanceOf(alice.address);
+    await curve.connect(alice).claimCreatorFees();
+    const aliceBalanceAfter = await mockCNGN.balanceOf(alice.address);
+
+    expect(aliceBalanceAfter - aliceBalanceBefore).to.equal(ethers.parseEther("100"));
+    expect(await curve.accumulatedCreatorFees()).to.equal(0);
+  });
+
+  it("Should enforce 24-hour anti-rug lock for coin creator", async function () {
+    await tokenFactory.connect(alice).launchToken("Pounded Yam", "YAM", "ipfs://QmYam");
+    const tokenAddress = await tokenFactory.allTokens(0);
+    const curveAddress = await tokenFactory.tokenToCurve(tokenAddress);
+    const curve = await ethers.getContractAt("BondingCurve", curveAddress);
+    const token = await ethers.getContractAt("MemecoinTemplate", tokenAddress);
+
+    // Alice (creator) buys tokens
+    const buyAmount = ethers.parseEther("1000");
+    await mockCNGN.connect(alice).approve(curveAddress, buyAmount);
+    await curve.connect(alice).buy(buyAmount, 0);
+
+    const aliceTokenBal = await token.balanceOf(alice.address);
+    await token.connect(alice).approve(curveAddress, aliceTokenBal);
+
+    // Attempting to sell as creator within 24h must revert
+    await expect(curve.connect(alice).sell(aliceTokenBal, 0)).to.be.revertedWith("Anti-Rug: Creator locked for 24 hours");
+
+    // Fast-forward EVM time by 24 hours (86400 seconds)
+    await ethers.provider.send("evm_increaseTime", [86400]);
+    await ethers.provider.send("evm_mine", []);
+
+    // After 24h, Alice can sell successfully
+    await expect(curve.connect(alice).sell(aliceTokenBal, 0)).to.not.be.reverted;
   });
 });

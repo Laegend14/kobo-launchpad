@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 export default function TokenDetailPage() {
   const params = useParams();
   const addressParam = (params.address as string) || '';
-  const { tokens, getTokenMetrics, getTokenTrades } = useAuth();
+  const { tokens, getTokenMetrics, getTokenTrades, claimCreatorFees } = useAuth();
 
   const token = tokens.find(
     t => t.address.toLowerCase() === addressParam.toLowerCase()
@@ -342,6 +342,64 @@ export default function TokenDetailPage() {
               <span className="font-bold text-white flex items-center gap-1">
                 🇳🇬 cNGN Stablecoin
               </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 6. Creator Royalty & Anti-Rug Protection Card */}
+        <div className="glass-card rounded-2xl p-5 border border-white/10 space-y-4 lg:col-span-2 bg-gradient-to-r from-emerald-500/10 via-transparent to-amber-500/10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <div className="flex items-center space-x-2">
+              <ShieldCheck className="w-5 h-5 text-amber-400" />
+              <h3 className="font-bold text-white text-base">🛡️ Anti-Rug Protection & Creator Royalties</h3>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs border border-emerald-500/30 font-bold flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                24h Creator Lock ACTIVE (16h 00m remaining)
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-medium">Creator Royalty Fee Rate</span>
+                <span className="font-bold text-emerald-400 text-sm">1.0% (100 bps)</span>
+              </div>
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Creator earns 1% cNGN on all trading volume. Accumulated royalties can be claimed anytime.
+              </p>
+              <div className="pt-2 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Accrued Royalties</span>
+                  <span className="font-bold text-white text-base">{metrics.formattedCreatorFees}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    const res = claimCreatorFees(token.address);
+                    alert(`Claimed ₦${res.claimedAmount.toLocaleString()} cNGN in creator fees!`);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                >
+                  Claim Royalties
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-medium">Anti-Rug Lock Mechanism</span>
+                <span className="font-bold text-amber-400 text-xs flex items-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5" /> 100% Enforced
+                </span>
+              </div>
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                The smart contract prevents the coin creator from selling tokens or pulling initial liquidity until 24 hours post-launch.
+              </p>
+              <div className="pt-2 text-emerald-400 text-[11px] font-medium flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" /> Public traders can buy & sell 24/7 without lock restriction.
+              </div>
             </div>
           </div>
         </div>

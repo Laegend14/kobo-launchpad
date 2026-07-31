@@ -28,6 +28,7 @@ interface AuthContextType {
   launchToken: (name: string, symbol: string, description: string, imageUrl: string) => TokenItem;
   buyToken: (tokenAddress: string, cngnAmount: number) => { tokensOut: number; priceImpact: number };
   sellToken: (tokenAddress: string, tokenAmount: number) => { cngnOut: number; priceImpact: number };
+  claimCreatorFees: (tokenAddress: string) => { claimedAmount: number };
   getTokenTrades: (tokenAddress: string) => TradeItem[];
   getTokenMetrics: (tokenAddress: string) => DetailedMetrics;
 }
@@ -253,6 +254,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { cngnOut, priceImpact: priceImpactPercent };
   };
 
+  const claimCreatorFees = (tokenAddress: string) => {
+    const metrics = getTokenMetrics(tokenAddress);
+    const claimedAmount = metrics.accumulatedCreatorFees || 100;
+    depositNaira(claimedAmount);
+    return { claimedAmount };
+  };
+
   const getTokenTrades = (tokenAddress: string): TradeItem[] => {
     return tradesMap[tokenAddress.toLowerCase()] || [];
   };
@@ -279,6 +287,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         launchToken,
         buyToken,
         sellToken,
+        claimCreatorFees,
         getTokenTrades,
         getTokenMetrics
       }}

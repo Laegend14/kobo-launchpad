@@ -52,10 +52,11 @@ contract TokenFactory is Ownable {
         require(bytes(name).length > 0, "Empty name");
         require(bytes(symbol).length > 0, "Empty symbol");
 
-        // 1. Deploy BondingCurve
+        // 1. Deploy BondingCurve with msg.sender as creator
         BondingCurve newCurve = new BondingCurve(
             cngnToken,
             migrationRouter,
+            msg.sender,
             VIRTUAL_CNGN_RESERVE,
             TOTAL_SUPPLY,
             MIGRATION_THRESHOLD
