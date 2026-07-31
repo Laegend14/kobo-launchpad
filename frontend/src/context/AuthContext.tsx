@@ -22,6 +22,7 @@ interface AuthContextType {
   tokens: TokenItem[];
   tradesMap: Record<string, TradeItem[]>;
   login: (address?: string) => void;
+  connectRealWeb3Wallet: () => Promise<string>;
   logout: () => void;
   depositNaira: (nairaAmount: number) => void;
   withdrawNaira: (nairaAmount: number) => void;
@@ -87,8 +88,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     syncState();
     window.addEventListener('storage', syncState);
+
+    // Listen to real Web3 window.ethereum account changes
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
+      const handleAccountsChanged = (accounts: string[]) => {
+        if (accounts.length > 0) {
+          setWalletAddress(accounts[0]);
+          localStorage.setItem('kobo_wallet', accounts[0]);
+        } else {
+          setWalletAddress(null);
+          localStorage.removeItem('kobo_wallet');
+        }
+      };
+      (window as any).ethereum.on('accountsChanged', handleAccountsChanged);
+      return () => {
+        window.removeEventListener('storage', syncState);
+        if ((window as any).ethereum.removeListener) {
+          (window as any).ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        }
+      };
+    }
+
     return () => window.removeEventListener('storage', syncState);
   }, []);
+
+  const connectRealWeb3Wallet = async (): Promise<string> => {
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
+      try {
+        const provider = (window as any).ethereum;
+        const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        if (accounts && accounts.length > 0) {
+          const realAddress = accounts[0];
+          setWalletAddress(realAddress);
+          localStorage.setItem('kobo_wallet', realAddress);
+
+          // Prompt user to switch to Arc Testnet (Chain ID 5042002 / 0x4CEEFA) if needed
+          try {
+            await provider.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: '0x4CEEFA' }],
+            });
+          } catch (switchError: any) {
+            if (switchError.code === 4902) {
+              try {
+                await provider.request({
+                  method: 'wallet_addEthereumChain',
+                  params: [
+                    {
+                      chainId: '0x4CEEFA',
+                      chainName: 'Arc Testnet',
+                      nativeCurrency: { name: 'ARC', symbol: 'ARC', decimals: 18 },
+                      rpcUrls: ['https://rpc.testnet.arc.io'],
+                      blockExplorerUrls: ['https://testnet.arcscan.app'],
+                    },
+                  ],
+                });
+              } catch (addError) {
+                console.warn("Failed to add Arc Testnet to wallet:", addError);
+              }
+            }
+          }
+          return realAddress;
+        }
+        throw new Error("No accounts returned from wallet");
+      } catch (err: any) {
+        console.error("Wallet connection error:", err);
+        throw err;
+      }
+    } else {
+      throw new Error("No EVM Web3 Wallet (MetaMask, Coinbase Wallet, etc.) detected in browser. Please install MetaMask or an EVM wallet extension.");
+    }
+  };
 
   const login = (customAddr?: string) => {
     const addr = customAddr || `0x71C${Math.random().toString(16).substring(2, 38)}`;
@@ -287,6 +357,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         tokens,
         tradesMap,
         login,
+        connectRealWeb3Wallet,
         logout,
         depositNaira,
         withdrawNaira,

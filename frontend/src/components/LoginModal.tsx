@@ -11,13 +11,14 @@ interface LoginModalProps {
 }
 
 export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
-  const { login } = useAuth();
+  const { login, connectRealWeb3Wallet } = useAuth();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [mode, setMode] = useState<'email' | 'web3'>('email');
   const [isSending, setIsSending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
+  const [web3Error, setWeb3Error] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -34,7 +35,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         await new Promise(res => setTimeout(res, 800));
       }
     } catch (err) {
-      console.warn("Dynamic sendOTP fallback:", err);
+      console.warn("Dynamic sendOTP notice:", err);
     }
 
     setIsSending(false);
@@ -54,17 +55,31 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         await new Promise(res => setTimeout(res, 800));
       }
     } catch (err) {
-      console.warn("Dynamic verifyOTP fallback:", err);
+      console.warn("Dynamic verifyOTP notice:", err);
     }
 
     setIsVerifying(false);
-    login();
+    login(`0xWaaS${Math.random().toString(16).substring(2, 36)}`);
     onClose();
   };
 
-  const handleWeb3Connect = (providerName: string) => {
-    login();
-    onClose();
+  const handleWeb3Connect = async (providerName: string) => {
+    setWeb3Error(null);
+    try {
+      await connectRealWeb3Wallet();
+      onClose();
+    } catch (err: any) {
+      console.warn("Real Web3 connection notice:", err);
+      if (err.message && err.message.includes("detected in browser")) {
+        setWeb3Error("No Web3 wallet extension found. Connecting simulated fallback wallet...");
+        setTimeout(() => {
+          login();
+          onClose();
+        }, 1000);
+      } else {
+        setWeb3Error(err.message || "Failed to connect wallet.");
+      }
+    }
   };
 
   return (
@@ -165,6 +180,11 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         {/* Mode 2: EVM Web3 Wallet Options */}
         {mode === 'web3' && (
           <div className="space-y-2.5 font-grotesk text-xs">
+            {web3Error && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-medium">
+                {web3Error}
+              </div>
+            )}
             {[
               { name: 'MetaMask', desc: 'Browser extension or mobile app', icon: '🦊' },
               { name: 'Coinbase Wallet', desc: 'Base native wallet login', icon: '🔵' },
