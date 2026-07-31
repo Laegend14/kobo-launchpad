@@ -1,10 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DynamicProvider, useEvent } from '@dynamic-labs-sdk/react-hooks';
-import { createWaasWalletAccounts, getChainsMissingWaasWalletAccounts } from '@dynamic-labs-sdk/client/waas';
-import { getDynamicClient } from '../lib/dynamicClient';
 
 interface Props {
   children: ReactNode;
@@ -24,7 +21,7 @@ class SafeErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.warn("Dynamic Provider Error caught safely:", error, errorInfo);
+    console.warn("Provider Error caught safely:", error, errorInfo);
   }
 
   public render() {
@@ -35,23 +32,6 @@ class SafeErrorBoundary extends Component<Props, State> {
   }
 }
 
-function WaasBootstrap() {
-  useEvent({
-    event: "userChanged",
-    listener: async (user: any) => {
-      if (!user) return;
-      try {
-        const missingChains = getChainsMissingWaasWalletAccounts();
-        if (missingChains.length === 0) return;
-        await createWaasWalletAccounts({ chains: missingChains });
-      } catch (err) {
-        console.warn("WaaS wallet creation skipped or failed:", err);
-      }
-    },
-  });
-  return null;
-}
-
 export default function DynamicProviderWrapper({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
@@ -60,30 +40,11 @@ export default function DynamicProviderWrapper({ children }: { children: React.R
       },
     },
   }));
-  const [client, setClient] = useState<any>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    try {
-      const dynamicInstance = getDynamicClient();
-      setClient(dynamicInstance);
-    } catch (e) {
-      console.warn("Failed to retrieve Dynamic Client:", e);
-    }
-  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <SafeErrorBoundary>
-        {mounted && client ? (
-          <DynamicProvider client={client}>
-            <WaasBootstrap />
-            {children}
-          </DynamicProvider>
-        ) : (
-          children
-        )}
+        {children}
       </SafeErrorBoundary>
     </QueryClientProvider>
   );
