@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, ArrowDownUp, Sparkles, CheckCircle2, ShieldCheck, RefreshCw, Building2 } from 'lucide-react';
+import { X, ArrowDownUp, Sparkles, CheckCircle2, ShieldCheck, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface SwapModalProps {
@@ -65,25 +65,30 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 font-grotesk">
-      <div className="w-full max-w-md glass-card rounded-2xl p-6 border border-emerald-500/30 relative shadow-2xl space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4 font-grotesk overflow-y-auto">
+      <div className="w-full max-w-md glass-card rounded-3xl p-4 sm:p-6 border border-emerald-500/30 relative shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto my-auto">
         
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="text-center space-y-1">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-[#00E676] mx-auto mb-2">
-            <ArrowDownUp className="w-6 h-6" />
+        {/* Sticky Header with Exit Button */}
+        <div className="flex items-center justify-between sticky top-0 bg-[#0A0E17]/95 backdrop-blur-md pb-2 z-20 border-b border-white/10 -mx-1 px-1 pt-1">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-[#00E676]">
+              <ArrowDownUp className="w-4 h-4" />
+            </div>
+            <h3 className="font-bold text-lg sm:text-xl text-white">Swap NGN ↔ cNGN</h3>
           </div>
-          <h3 className="font-bold text-2xl text-white">Swap NGN ↔ cNGN</h3>
-          <p className="text-xs text-slate-400 font-inter">
-            Instant 1:1 zero-fee conversion between Naira (NGN ₦) &amp; cNGN Stablecoin.
-          </p>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl bg-white/10 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 transition-all border border-white/10 flex items-center justify-center shrink-0"
+            title="Close modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
+
+        <p className="text-xs text-slate-400 font-inter leading-relaxed">
+          Instant 1:1 zero-fee conversion between Naira (NGN ₦) &amp; cNGN Stablecoin.
+        </p>
 
         {/* Direction Indicator Pill */}
         <div className="flex bg-[#0A0E17] p-1 rounded-xl border border-white/10 text-xs font-bold">
@@ -117,7 +122,7 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
           <div className="p-3.5 rounded-xl bg-[#0A0E17] border border-white/10 space-y-1.5">
             <div className="flex items-center justify-between text-xs text-slate-400 font-inter">
               <span>You Pay ({direction === 'ngnToCngn' ? 'Naira ₦ NGN' : 'cNGN Stablecoin'})</span>
-              <span>Available: ₦{sourceBalance.toLocaleString('en-NG')}</span>
+              <span className="font-mono text-slate-300">Available: ₦{sourceBalance.toLocaleString('en-NG')}</span>
             </div>
             <div className="relative">
               <input
@@ -126,9 +131,9 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="50000"
-                className="w-full py-2 px-3 rounded-lg bg-white/5 border border-white/10 text-white font-bold text-lg outline-none focus:border-emerald-500"
+                className="w-full py-2.5 px-3 rounded-lg bg-white/5 border border-white/10 text-white font-bold text-base sm:text-lg outline-none focus:border-emerald-500"
               />
-              <span className="absolute right-3 top-2.5 text-xs font-bold text-emerald-400">
+              <span className="absolute right-3 top-3 text-xs font-bold text-emerald-400">
                 {direction === 'ngnToCngn' ? 'NGN ₦' : 'cNGN ₦'}
               </span>
             </div>
@@ -170,7 +175,7 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
               <span className="text-emerald-400 text-[10px] font-bold">1:1 Guaranteed Rate</span>
             </div>
             <div className="flex items-center justify-between pt-1">
-              <span className="text-lg font-bold text-white font-mono">
+              <span className="text-base sm:text-lg font-bold text-white font-mono">
                 ₦{numAmount.toLocaleString('en-NG')}
               </span>
               <span className="text-xs font-bold text-cyan-400">

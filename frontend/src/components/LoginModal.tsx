@@ -39,25 +39,28 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md glass-card rounded-2xl p-6 border border-emerald-500/30 relative shadow-2xl space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4 font-grotesk overflow-y-auto">
+      <div className="w-full max-w-md glass-card rounded-3xl p-4 sm:p-6 border border-emerald-500/30 relative shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto my-auto">
         
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="text-center space-y-1">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-[#00E676] mx-auto mb-2">
-            <Wallet className="w-6 h-6" />
+        {/* Sticky Header with Exit Button */}
+        <div className="flex items-center justify-between sticky top-0 bg-[#0A0E17]/95 backdrop-blur-md pb-2 z-20 border-b border-white/10 -mx-1 px-1 pt-1">
+          <div className="flex items-center space-x-2 text-[#00E676]">
+            <Wallet className="w-4 h-4" />
+            <h3 className="font-bold text-lg sm:text-xl text-white">Connect Web3 Wallet</h3>
           </div>
-          <h3 className="font-grotesk font-bold text-2xl text-white">Connect Web3 Wallet</h3>
-          <p className="text-xs text-slate-400 font-inter">
-            Connect your EVM Web3 Wallet (MetaMask, Coinbase Wallet, Trust Wallet, etc.) to trade cNGN on Arc Testnet.
-          </p>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl bg-white/10 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 transition-all border border-white/10 flex items-center justify-center shrink-0"
+            title="Close modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
+
+        <p className="text-xs text-slate-400 font-inter">
+          Connect your EVM Web3 Wallet (MetaMask, Coinbase Wallet, Trust Wallet, etc.) to trade cNGN on Arc Testnet.
+        </p>
 
         {web3Error && (
           <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-medium">
@@ -114,7 +117,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           ))}
         </div>
 
-        <div className="p-3 rounded-xl bg-slate-900/80 border border-white/5 text-[11px] text-slate-400 flex items-center space-x-2">
+        <div className="p-3 rounded-xl bg-slate-900/80 border border-white/5 text-[11px] text-slate-400 flex items-center space-x-2 font-inter">
           <ShieldCheck className="w-4 h-4 text-[#00E676] shrink-0" />
           <span>Direct Web3 Provider Signature Authentication on Arc Testnet.</span>
         </div>

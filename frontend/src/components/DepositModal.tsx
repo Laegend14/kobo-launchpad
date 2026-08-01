@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Building2, CheckCircle2, Copy, Sparkles, RefreshCw, ArrowRightLeft, ArrowDownUp } from 'lucide-react';
+import { X, Building2, CheckCircle2, Sparkles, RefreshCw, ArrowDownUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface DepositModalProps {
@@ -22,7 +22,6 @@ export default function DepositModal({ isOpen, onClose, onOpenSwap }: DepositMod
     if (nairaAmount <= 0) return;
     setIsSubmitting(true);
 
-    // Simulate bank transfer/faucet claim settlement
     await new Promise(res => setTimeout(res, 800));
 
     setIsSubmitting(false);
@@ -42,22 +41,27 @@ export default function DepositModal({ isOpen, onClose, onOpenSwap }: DepositMod
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 font-grotesk">
-      <div className="w-full max-w-md glass-card rounded-2xl p-6 border border-emerald-500/30 relative shadow-2xl space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4 font-grotesk overflow-y-auto">
+      <div className="w-full max-w-md glass-card rounded-3xl p-4 sm:p-6 border border-emerald-500/30 relative shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto my-auto">
         
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {/* Sticky Header with Exit Button */}
+        <div className="flex items-center justify-between sticky top-0 bg-[#0A0E17]/95 backdrop-blur-md pb-2 z-20 border-b border-white/10 -mx-1 px-1 pt-1">
+          <div className="flex items-center space-x-2 text-[#00E676]">
+            <Sparkles className="w-4 h-4" />
+            <h3 className="font-bold text-lg sm:text-xl text-white">Claim Naira Faucet</h3>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl bg-white/10 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 transition-all border border-white/10 flex items-center justify-center shrink-0"
+            title="Close modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
         {!isSuccess ? (
           <div className="space-y-4">
-            <div className="flex items-center space-x-2 text-[#00E676]">
-              <Sparkles className="w-5 h-5" />
-              <h3 className="font-bold text-xl text-white">Claim Naira Faucet (₦ NGN)</h3>
-            </div>
             <p className="text-xs text-slate-400 leading-relaxed font-inter">
               Claim testnet Naira (₦ NGN) funds to your wallet. You can swap your Naira to <strong>cNGN stablecoin</strong> anytime to trade memecoins.
             </p>
@@ -71,7 +75,7 @@ export default function DepositModal({ isOpen, onClose, onOpenSwap }: DepositMod
                 type="number"
                 value={nairaAmount}
                 onChange={(e) => setNairaAmount(Number(e.target.value))}
-                className="w-full py-2.5 px-3.5 rounded-xl bg-[#0A0E17] border border-white/10 text-white font-bold text-lg outline-none focus:border-emerald-500"
+                className="w-full py-2.5 px-3.5 rounded-xl bg-[#0A0E17] border border-white/10 text-white font-bold text-base sm:text-lg outline-none focus:border-emerald-500"
               />
 
               <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
@@ -134,7 +138,7 @@ export default function DepositModal({ isOpen, onClose, onOpenSwap }: DepositMod
               <CheckCircle2 className="w-8 h-8" />
             </div>
             <div>
-              <h4 className="font-bold text-2xl text-white">Naira Credited!</h4>
+              <h4 className="font-bold text-xl sm:text-2xl text-white">Naira Credited!</h4>
               <p className="text-sm text-slate-300 mt-1">
                 Your wallet has been credited with <strong>₦{nairaAmount.toLocaleString('en-NG')} NGN</strong>.
               </p>
