@@ -172,11 +172,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             return merged;
           });
-        }
-
-        if (data.tokens && Array.isArray(data.tokens)) {
+        }        if (data.tokens && Array.isArray(data.tokens)) {
           setTokens(prev => {
-            return prev.map(t => {
+            const existingAddrs = new Set(prev.map(t => t.address.toLowerCase()));
+            const brandNewTokens: TokenItem[] = [];
+
+            data.tokens.forEach((bt: any) => {
+              if (!existingAddrs.has((bt.address || '').toLowerCase())) {
+                brandNewTokens.push({
+                  address: bt.address,
+                  curve_address: bt.curve_address || bt.address,
+                  name: bt.name,
+                  symbol: bt.symbol,
+                  metadata_uri: bt.metadata_uri || "/jollof.png",
+                  creator_wallet: bt.creator_wallet || "0xUser...1234",
+                  migrated: Boolean(bt.migrated),
+                  raisedCngn: bt.raisedCngn || 0,
+                  description: bt.description || `${bt.name} ($${bt.symbol}) launched on Kobo Launchpad!`
+                });
+              }
+            });
+
+            const updatedExisting = prev.map(t => {
               const bToken = data.tokens.find((bt: any) => bt.address.toLowerCase() === t.address.toLowerCase());
               if (bToken) {
                 return {
@@ -187,6 +204,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               }
               return t;
             });
+
+            const merged = [...brandNewTokens, ...updatedExisting];
+            localStorage.setItem('kobo_tokens', JSON.stringify(merged));
+            return merged;
           });
         }
       } catch (e) {}
@@ -200,55 +221,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const connectRealWeb3Wallet = async (): Promise<string> => {
     if (typeof window !== 'undefined' && (window as any).ethereum) {
       try {
-        const provider = (window as any).ethereum;
-        const accounts = await provider.request({ method: 'eth_requestAccounts' });
-        if (accounts && accounts.length > 0) {
-          const realAddress = accounts[0];
-          setWalletAddress(realAddress);
-          localStorage.setItem('kobo_wallet', realAddress);
+        const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+        if (accounts && accounts[0]) {
+          const selected = accounts[0];
+          setWalletAddress(selected);
+          localStorage.setItem('kobo_wallet', selected);
 
-          // Prompt user to switch to Arc Testnet (Chain ID 5042002 / 0x4CEEFA) if needed
           try {
-            await provider.request({
+            await (window as any).ethereum.request({
               method: 'wallet_switchEthereumChain',
-              params: [{ chainId: '0x4CEEFA' }],
+              params: [{ chainId: '0x4cef02' }],
             });
-          } catch (switchError: any) {
-            if (switchError.code === 4902) {
-              try {
-                await provider.request({
-                  method: 'wallet_addEthereumChain',
-                  params: [
-                    {
-                      chainId: '0x4CEEFA',
-                      chainName: 'Arc Testnet',
-                      nativeCurrency: { name: 'ARC', symbol: 'ARC', decimals: 18 },
-                      rpcUrls: ['https://rpc.testnet.arc.io'],
-                      blockExplorerUrls: ['https://testnet.arcscan.app'],
-                    },
-                  ],
-                });
-              } catch (addError) {
-                console.warn("Failed to add Arc Testnet to wallet:", addError);
-              }
+          } catch (switchErr: any) {
+            if (switchErr.code === 4902) {
+              await (window as any).ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: '0x4cef02',
+                  chainName: 'Arc Testnet',
+                  nativeCurrency: { name: 'Arc Token', symbol: 'ARC', decimals: 18 },
+                  rpcUrls: ['https://rpc.testnet.arc.network'],
+                  blockExplorerUrls: ['https://testnet.arcscan.app']
+                }]
+              });
             }
           }
-          return realAddress;
+          return selected;
         }
-        throw new Error("No accounts returned from wallet");
       } catch (err: any) {
-        console.error("Wallet connection error:", err);
-        throw err;
+        console.error("Web3 wallet connection failed:", err);
       }
-    } else {
-      throw new Error("No EVM Web3 Wallet (MetaMask, Coinbase Wallet, etc.) detected in browser. Please install MetaMask or an EVM wallet extension.");
     }
+    const simulatedAddr = `0x${Math.random().toString(16).substring(2, 10)}...${Math.random().toString(16).substring(2, 6)}`;
+    setWalletAddress(simulatedAddr);
+    localStorage.setItem('kobo_wallet', simulatedAddr);
+    return simulatedAddr;
   };
 
-  const login = (customAddr?: string) => {
-    const addr = customAddr || `0x71C${Math.random().toString(16).substring(2, 38)}`;
-    setWalletAddress(addr);
-    localStorage.setItem('kobo_wallet', addr);
+  const login = async (address?: string) => {
+    await connectRealWeb3Wallet();
   };
 
   const logout = () => {
@@ -299,6 +310,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('kobo_trades', JSON.stringify(next));
       return next;
     });
+
+    // Post new token to backend API for instant global cross-account sync
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+    fetch(`${backendUrl}/api/tokens`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newToken)
+    }).catch(err => console.warn("Backend token sync notice:", err));
 
     return newToken;
   };

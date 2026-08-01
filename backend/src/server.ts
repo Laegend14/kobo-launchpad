@@ -245,6 +245,35 @@ app.get('/api/trades', (req: Request, res: Response) => {
   res.json({ trades: inMemStore.trades, tokens: inMemStore.tokens });
 });
 
+// 13. POST /api/tokens - Create and broadcast new token globally across all accounts
+app.post('/api/tokens', (req: Request, res: Response) => {
+  const { address, curve_address, name, symbol, metadata_uri, creator_wallet, description } = req.body;
+  if (!name || !symbol) {
+    return res.status(400).json({ error: "Missing required token fields" });
+  }
+
+  const existing = inMemStore.tokens.find(t => t.address.toLowerCase() === (address || '').toLowerCase());
+  if (existing) {
+    return res.json({ token: existing });
+  }
+
+  const newToken: TokenRecord = {
+    id: inMemStore.tokens.length + 1,
+    address: address || `0x${Math.random().toString(16).substring(2, 42)}`,
+    curve_address: curve_address || `0x${Math.random().toString(16).substring(2, 42)}`,
+    name,
+    symbol: symbol.toUpperCase(),
+    metadata_uri: metadata_uri || "/jollof.png",
+    creator_wallet: creator_wallet || "0xUser...1234",
+    migrated: false,
+    raisedCngn: 0,
+    created_at: new Date().toISOString()
+  };
+
+  inMemStore.tokens.unshift(newToken);
+  res.status(201).json({ token: newToken });
+});
+
 app.listen(port, () => {
   console.log(`Kobo Launchpad Backend running on http://localhost:${port}`);
 });
