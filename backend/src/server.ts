@@ -52,7 +52,7 @@ function deriveBackendMetrics(token: TokenRecord) {
     progressPercent: Number(progressPercent.toFixed(2)),
     raisedCngn,
     migrationThreshold: 50000,
-    holderCount: Math.max(142, new Set(tokenTrades.map(t => t.trader_wallet)).size + 140),
+    holderCount: Math.max(1, new Set(tokenTrades.map(t => (t.trader_wallet || '').toLowerCase()).filter(Boolean)).size),
     security: {
       mintDisabled: true,
       renouncedOwnership: true,

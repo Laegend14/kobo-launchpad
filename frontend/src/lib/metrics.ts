@@ -208,10 +208,11 @@ export function deriveTokenMetrics(
   const liquidityCngn = Math.max(0, raisedCngn);
   const mcToLiquidityRatio = liquidityCngn > 0 ? (marketCapNaira / liquidityCngn) : 0;
 
-  // Holders calculation
+  // Holders calculation (accurate unique wallet holders)
   const walletBalances: Record<string, number> = {};
   sortedTrades.forEach(tr => {
-    const w = tr.trader_wallet.toLowerCase();
+    const w = (tr.trader_wallet || '').toLowerCase();
+    if (!w) return;
     if (!walletBalances[w]) walletBalances[w] = 0;
     if (tr.side === 'buy') {
       walletBalances[w] += tr.token_amount;
@@ -221,7 +222,8 @@ export function deriveTokenMetrics(
   });
 
   const activeHolders = Object.entries(walletBalances).filter(([_, bal]) => bal > 0);
-  const holderCount = Math.max(142, activeHolders.length);
+  const uniqueTradersCount = new Set(sortedTrades.map(tr => (tr.trader_wallet || '').toLowerCase()).filter(Boolean)).size;
+  const holderCount = Math.max(1, activeHolders.length || uniqueTradersCount);
 
   // Top 10 holder percentage
   const sortedHoldings = activeHolders.map(([_, bal]) => bal).sort((a, b) => b - a);
