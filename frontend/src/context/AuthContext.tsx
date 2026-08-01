@@ -235,8 +235,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 params: [{
                   chainId: '0x4cef02',
                   chainName: 'Arc Testnet',
-                  nativeCurrency: { name: 'Arc Token', symbol: 'ARC', decimals: 18 },
-                  rpcUrls: ['https://rpc.testnet.arc.network'],
+                  // Native gas token is USDC (18 decimals internally) per Arc docs
+                  nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
+                  rpcUrls: [
+                    'https://rpc.testnet.arc.io',            // Primary (Circle)
+                    'https://rpc.blockdaemon.testnet.arc.io', // Blockdaemon
+                    'https://rpc.drpc.testnet.arc.io',        // dRPC
+                    'https://rpc.quicknode.testnet.arc.io'    // QuickNode
+                  ],
                   blockExplorerUrls: ['https://testnet.arcscan.app']
                 }]
               });
