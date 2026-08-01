@@ -47,6 +47,22 @@ const INITIAL_TRADES: Record<string, TradeItem[]> = {};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/**
+ * Returns the base URL for backend API calls.
+ * - Uses NEXT_PUBLIC_BACKEND_URL env var if set (explicit config)
+ * - Uses empty string (relative URL) in production — Vercel rewrites /api/* to backend service
+ * - Uses localhost:4000 for local development
+ */
+function getBackendUrl(): string {
+  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_BACKEND_URL) {
+    return process.env.NEXT_PUBLIC_BACKEND_URL;
+  }
+  if (typeof window !== 'undefined' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
+    return ''; // relative path — Vercel rewrites /api/* → backend service
+  }
+  return 'http://localhost:4000';
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [cngnBalance, setCngnBalance] = useState<number>(250000);
@@ -122,7 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const fetchGlobalSync = async () => {
       try {
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+        const backendUrl = getBackendUrl();
         
         // 1. Fetch Tokens list from backend
         const tokenRes = await fetch(`${backendUrl}/api/tokens`).catch(() => null);
@@ -322,7 +338,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Post new token to backend API for instant global cross-account sync
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+    const backendUrl = getBackendUrl();
     fetch(`${backendUrl}/api/tokens`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -394,7 +410,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Post trade to backend API for global cross-account sync
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+    const backendUrl = getBackendUrl();
     fetch(`${backendUrl}/api/trades`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -472,7 +488,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Post trade to backend API for global cross-account sync
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+    const backendUrl = getBackendUrl();
     fetch(`${backendUrl}/api/trades`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
