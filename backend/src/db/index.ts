@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export interface TokenRecord {
+  id?: number;
   address: string;
   curve_address: string;
   name: string;
