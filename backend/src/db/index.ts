@@ -56,19 +56,7 @@ export interface UserRecord {
 }
 
 class InMemStore {
-  tokens: TokenRecord[] = [
-    {
-      address: "0x9EB4d17b401AC28024ee557D5D1947cF0Ddcd301",
-      curve_address: "0xe18BB79fC5C0C9759B3A3e6C273c80D010a3F503",
-      name: "Jollof Coin",
-      symbol: "JOFF",
-      metadata_uri: "/jollof.png",
-      creator_wallet: "0x959C...81f8",
-      migrated: false,
-      created_at: new Date().toISOString(),
-      description: "The undisputed King of West African Cuisine & Unstoppable Meme Powerhouse. Born from firewood smoke, a secret pepper blend of tatashe & rodo, and fierce national pride, Jollof Coin ($JOFF) represents the legendary, undisputed Party Jollof. No competition, no cap — pure golden smokey goodness backed 1:1 by cNGN bonding curves!"
-    }
-  ];
+  tokens: TokenRecord[] = [];
   trades: TradeRecord[] = [];
   deposits: DepositRecord[] = [];
   withdrawals: WithdrawalRecord[] = [];

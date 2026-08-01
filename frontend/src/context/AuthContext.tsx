@@ -41,37 +41,9 @@ interface AuthContextType {
   getTokenMetrics: (tokenAddress: string) => DetailedMetrics;
 }
 
-const JOFF_ADDRESS = "0x9EB4d17b401AC28024ee557D5D1947cF0Ddcd301";
+const INITIAL_TOKENS: TokenItem[] = [];
 
-const INITIAL_TOKENS: TokenItem[] = [
-  {
-    address: JOFF_ADDRESS,
-    curve_address: "0xe18BB79fC5C0C9759B3A3e6C273c80D010a3F503",
-    name: "Jollof Coin",
-    symbol: "JOFF",
-    metadata_uri: "/jollof.png",
-    creator_wallet: "0x959C...81f8",
-    migrated: false,
-    raisedCngn: 15400,
-    description: "The undisputed King of West African Cuisine & Unstoppable Meme Powerhouse. Born from firewood smoke, a secret pepper blend of tatashe & rodo, and fierce national pride, Jollof Coin ($JOFF) represents the legendary, undisputed Party Jollof. No competition, no cap — pure golden smokey goodness backed 1:1 by cNGN bonding curves!"
-  }
-];
-
-const INITIAL_TRADES: Record<string, TradeItem[]> = {
-  [JOFF_ADDRESS.toLowerCase()]: [
-    {
-      id: "1",
-      token_address: JOFF_ADDRESS,
-      trader_wallet: "0x959C...81f8",
-      side: "buy",
-      cngn_amount: 5000,
-      token_amount: 500000,
-      price: 0.01,
-      timestamp: Date.now() - 3600000,
-      tx_hash: "0x3f8a...91b2"
-    }
-  ]
-};
+const INITIAL_TRADES: Record<string, TradeItem[]> = {};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -87,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try { return JSON.parse(saved); } catch (e) {}
       }
     }
-    return { [JOFF_ADDRESS.toLowerCase()]: 500000 };
+    return {};
   });
 
   useEffect(() => {

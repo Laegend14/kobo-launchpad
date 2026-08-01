@@ -101,62 +101,81 @@ export default function HomeFeedPage() {
       </div>
 
       {/* Memecoins Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredTokens.map((t) => {
-          const metrics = getTokenMetrics(t.address);
+      {filteredTokens.length === 0 ? (
+        <div className="glass-card rounded-3xl p-12 text-center space-y-4 border border-white/10">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-[#00E676] mx-auto">
+            <Flame className="w-7 h-7" />
+          </div>
+          <h3 className="text-xl font-bold text-white">No Memecoins Active Yet</h3>
+          <p className="text-xs text-slate-400 font-inter max-w-sm mx-auto">
+            Be the very first creator to launch a Naira-native memecoin on-chain on Arc Testnet!
+          </p>
+          <Link
+            href="/create"
+            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Launch First Memecoin</span>
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredTokens.map((t) => {
+            const metrics = getTokenMetrics(t.address);
 
-          return (
-            <Link
-              key={t.address}
-              href={`/token/${t.address}`}
-              className="glass-card rounded-2xl p-5 border border-white/10 hover:border-emerald-500/40 transition-all group flex flex-col justify-between space-y-4 hover:-translate-y-1 shadow-lg"
-            >
-              <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <img
-                      src={t.metadata_uri || "/jollof.png"}
-                      alt={t.name}
-                      className="w-12 h-12 rounded-xl object-cover border border-white/10 group-hover:scale-105 transition-transform"
-                    />
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <h3 className="font-bold text-white text-base group-hover:text-[#00E676] transition-colors">
-                          {t.name}
-                        </h3>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-[#00E676] border border-emerald-500/20">
-                          ${t.symbol}
-                        </span>
+            return (
+              <Link
+                key={t.address}
+                href={`/token/${t.address}`}
+                className="glass-card rounded-2xl p-5 border border-white/10 hover:border-emerald-500/40 transition-all group flex flex-col justify-between space-y-4 hover:-translate-y-1 shadow-lg"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center space-x-3">
+                      <img
+                        src={t.metadata_uri || "/jollof.png"}
+                        alt={t.name}
+                        className="w-12 h-12 rounded-xl object-cover border border-white/10 group-hover:scale-105 transition-transform"
+                      />
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h3 className="font-bold text-[#00E676] text-base">
+                            {t.name}
+                          </h3>
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-[#00E676] border border-emerald-500/20">
+                            ${t.symbol}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-inter">
+                          by <span className="font-mono text-slate-300">{t.creator_wallet}</span>
+                        </p>
                       </div>
-                      <p className="text-[11px] text-slate-400 font-inter">
-                        by <span className="font-mono text-slate-300">{t.creator_wallet}</span>
-                      </p>
+                    </div>
+
+                    <ArrowUpRight className="w-5 h-5 text-slate-500 group-hover:text-[#00E676] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                      <span className="text-[10px] text-slate-400 block">Market Cap</span>
+                      <span className="font-bold text-white">{metrics.formattedMarketCapNaira}</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                      <span className="text-[10px] text-[#00E676] block">24h Vol</span>
+                      <span className="font-bold text-white">{metrics.formattedVolume24hNaira}</span>
                     </div>
                   </div>
-
-                  <ArrowUpRight className="w-5 h-5 text-slate-500 group-hover:text-[#00E676] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                  <div className="p-2 rounded-lg bg-white/5 border border-white/5">
-                    <span className="text-[10px] text-slate-400 block">Market Cap</span>
-                    <span className="font-bold text-white">{metrics.formattedMarketCapNaira}</span>
-                  </div>
-                  <div className="p-2 rounded-lg bg-white/5 border border-white/5">
-                    <span className="text-[10px] text-[#00E676] block">24h Vol</span>
-                    <span className="font-bold text-white">{metrics.formattedVolume24hNaira}</span>
-                  </div>
+                {/* Bonding Curve Progress */}
+                <div className="pt-2 border-t border-white/5">
+                  <CurveProgressBar raisedCngn={metrics.liquidityCngn} threshold={50000} migrated={metrics.migrated} />
                 </div>
-              </div>
-
-              {/* Bonding Curve Progress */}
-              <div className="pt-2 border-t border-white/5">
-                <CurveProgressBar raisedCngn={metrics.liquidityCngn} threshold={50000} migrated={metrics.migrated} />
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
     </div>
   );
