@@ -64,6 +64,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const syncState = () => {
+      // Force purge legacy cached sample tokens across browsers
+      if (typeof window !== 'undefined' && !localStorage.getItem('kobo_v3_purged')) {
+        localStorage.removeItem('kobo_tokens');
+        localStorage.removeItem('kobo_trades');
+        localStorage.removeItem('kobo_user_holdings');
+        localStorage.setItem('kobo_v3_purged', 'true');
+        setTokens([]);
+        setTradesMap({});
+        setUserHoldings({});
+        return;
+      }
+
       const savedWallet = localStorage.getItem('kobo_wallet');
       const savedBalance = localStorage.getItem('kobo_balance');
       const savedTokens = localStorage.getItem('kobo_tokens');
