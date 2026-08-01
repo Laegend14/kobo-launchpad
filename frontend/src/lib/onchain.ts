@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 
 export const TOKEN_FACTORY_ADDRESS = "0xA1E20bed244Ddd60486195e917EE8D741Fe28618";
 export const CNGN_ADDRESS = "0xe634A98791a83951E3452B2c8B1072e98C03A93F";
-export const ARC_TESTNET_CHAIN_ID = "0x4cef02"; // 5042002 in hex
+export const ARC_TESTNET_CHAIN_ID = "0x4cef52"; // 5042002 in hex (verified: 5042002 = 0x4CEF52)
 
 export const TOKEN_FACTORY_ABI = [
   "function launchToken(string name, string symbol, string metadataURI) external returns (address token, address curve)",
@@ -30,7 +30,7 @@ export async function ensureArcTestnetNetwork(): Promise<boolean> {
 
   try {
     const currentChainId = await ethereum.request({ method: 'eth_chainId' });
-    if (currentChainId && (currentChainId.toLowerCase() === ARC_TESTNET_CHAIN_ID.toLowerCase() || currentChainId === '0x4cef02')) {
+    if (currentChainId && (currentChainId.toLowerCase() === ARC_TESTNET_CHAIN_ID.toLowerCase() || currentChainId === '0x4cef52')) {
       return true;
     }
 

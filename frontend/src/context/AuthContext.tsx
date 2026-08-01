@@ -226,14 +226,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             await (window as any).ethereum.request({
               method: 'wallet_switchEthereumChain',
-              params: [{ chainId: '0x4cef02' }],
+              params: [{ chainId: '0x4cef52' }],
             });
           } catch (switchErr: any) {
             if (switchErr.code === 4902) {
               await (window as any).ethereum.request({
                 method: 'wallet_addEthereumChain',
                 params: [{
-                  chainId: '0x4cef02',
+                  chainId: '0x4cef52',
                   chainName: 'Arc Testnet',
                   // Native gas token is USDC (18 decimals internally) per Arc docs
                   nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
