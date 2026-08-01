@@ -19,6 +19,7 @@ export default function CreateTokenPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadMode, setUploadMode] = useState<'drag' | 'url'>('drag');
   const [isDeploying, setIsDeploying] = useState(false);
+  const [deployError, setDeployError] = useState<string | null>(null);
   const [successToken, setSuccessToken] = useState<any>(null);
 
   const handleFile = (file: File) => {
@@ -62,6 +63,7 @@ export default function CreateTokenPage() {
 
     if (!name || !symbol) return;
     setIsDeploying(true);
+    setDeployError(null);
 
     let onChainAddress: string | undefined;
     let onChainCurve: string | undefined;
@@ -74,7 +76,10 @@ export default function CreateTokenPage() {
         onChainCurve = onChainRes.curveAddress;
         onChainTxHash = onChainRes.txHash;
       } catch (err: any) {
-        console.warn("On-chain token launch notice:", err);
+        console.error("On-chain token launch error or cancellation:", err);
+        setIsDeploying(false);
+        setDeployError(err.message || "Transaction was rejected or cancelled by user.");
+        return; // ABORT TOKEN CREATION!
       }
     } else {
       await new Promise(res => setTimeout(res, 800));
@@ -104,6 +109,16 @@ export default function CreateTokenPage() {
       </div>
 
       <div className="glass-card rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl space-y-6">
+        
+        {deployError && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-inter flex items-start space-x-3">
+            <Info className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
+            <div>
+              <p className="font-bold text-amber-200">Token Launch Aborted</p>
+              <p className="mt-0.5 opacity-90">{deployError}</p>
+            </div>
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           
