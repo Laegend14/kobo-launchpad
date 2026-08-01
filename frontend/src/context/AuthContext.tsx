@@ -64,12 +64,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const syncState = () => {
-      // Force purge legacy cached sample tokens across browsers
-      if (typeof window !== 'undefined' && !localStorage.getItem('kobo_v3_purged')) {
+      // Force purge cached tokens on every new test cycle — bump version to re-trigger
+      if (typeof window !== 'undefined' && !localStorage.getItem('kobo_v4_purged')) {
         localStorage.removeItem('kobo_tokens');
         localStorage.removeItem('kobo_trades');
         localStorage.removeItem('kobo_user_holdings');
-        localStorage.setItem('kobo_v3_purged', 'true');
+        localStorage.removeItem('kobo_v3_purged');
+        localStorage.setItem('kobo_v4_purged', 'true');
         setTokens([]);
         setTradesMap({});
         setUserHoldings({});
