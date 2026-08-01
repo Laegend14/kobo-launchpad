@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Rocket, Sparkles, UploadCloud, Info, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
+import { launchTokenOnChain } from '@/lib/onchain';
+
 export default function CreateTokenPage() {
   const router = useRouter();
   const { isLoggedIn, login, launchToken } = useAuth();
@@ -61,10 +63,24 @@ export default function CreateTokenPage() {
     if (!name || !symbol) return;
     setIsDeploying(true);
 
-    // Simulate smart contract deployment & TokenFactory tx
-    await new Promise(res => setTimeout(res, 1200));
+    let onChainAddress: string | undefined;
+    let onChainCurve: string | undefined;
+    let onChainTxHash: string | undefined;
 
-    const newToken = launchToken(name, symbol, description, imageUrl);
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
+      try {
+        const onChainRes = await launchTokenOnChain(name, symbol, imageUrl);
+        onChainAddress = onChainRes.tokenAddress;
+        onChainCurve = onChainRes.curveAddress;
+        onChainTxHash = onChainRes.txHash;
+      } catch (err: any) {
+        console.warn("On-chain token launch notice:", err);
+      }
+    } else {
+      await new Promise(res => setTimeout(res, 800));
+    }
+
+    const newToken = launchToken(name, symbol, description, imageUrl, onChainAddress, onChainCurve, onChainTxHash);
     setIsDeploying(false);
     setSuccessToken(newToken);
 

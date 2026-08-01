@@ -33,7 +33,7 @@ interface AuthContextType {
   logout: () => void;
   depositNaira: (nairaAmount: number) => void;
   withdrawNaira: (nairaAmount: number) => void;
-  launchToken: (name: string, symbol: string, description: string, imageUrl: string) => TokenItem;
+  launchToken: (name: string, symbol: string, description: string, imageUrl: string, customAddress?: string, customCurve?: string, txHash?: string) => TokenItem;
   buyToken: (tokenAddress: string, cngnAmount: number) => { tokensOut: number; priceImpact: number };
   sellToken: (tokenAddress: string, tokenAmount: number) => { cngnOut: number; priceImpact: number };
   claimCreatorFees: (tokenAddress: string) => { claimedAmount: number };
@@ -294,9 +294,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const launchToken = (name: string, symbol: string, description: string, imageUrl: string): TokenItem => {
-    const tokenAddr = `0x${Math.random().toString(16).substring(2, 42)}`;
-    const curveAddr = `0x${Math.random().toString(16).substring(2, 42)}`;
+  const launchToken = (
+    name: string,
+    symbol: string,
+    description: string,
+    imageUrl: string,
+    customAddress?: string,
+    customCurve?: string,
+    txHash?: string
+  ): TokenItem => {
+    const tokenAddr = customAddress || `0x${Math.random().toString(16).substring(2, 42)}`;
+    const curveAddr = customCurve || `0x${Math.random().toString(16).substring(2, 42)}`;
 
     const newToken: TokenItem = {
       address: tokenAddr,
