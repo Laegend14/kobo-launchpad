@@ -138,83 +138,94 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const fetchGlobalSync = async () => {
       try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
-        const res = await fetch(`${backendUrl}/api/trades`);
-        if (!res.ok) return;
-        const data = await res.json();
         
-        if (data.trades && Array.isArray(data.trades)) {
-          const newMap: Record<string, TradeItem[]> = {};
-          for (const tr of data.trades) {
-            const addr = (tr.token_address || '').toLowerCase();
-            if (!addr) continue;
-            if (!newMap[addr]) newMap[addr] = [];
-            newMap[addr].push({
-              id: String(tr.id || Math.random()),
-              token_address: tr.token_address,
-              trader_wallet: tr.trader_wallet,
-              side: tr.side,
-              cngn_amount: Number(tr.cngn_amount),
-              token_amount: Number(tr.token_amount),
-              price: Number(tr.price),
-              timestamp: new Date(tr.created_at || Date.now()).getTime(),
-              tx_hash: tr.tx_hash || '0x...'
+        // 1. Fetch Tokens list from backend
+        const tokenRes = await fetch(`${backendUrl}/api/tokens`).catch(() => null);
+        if (tokenRes && tokenRes.ok) {
+          const tokenData = await tokenRes.json();
+          if (tokenData.tokens && Array.isArray(tokenData.tokens)) {
+            setTokens(prev => {
+              const existingAddrs = new Set(prev.map(t => t.address.toLowerCase()));
+              const brandNewTokens: TokenItem[] = [];
+
+              tokenData.tokens.forEach((bt: any) => {
+                if (bt.address && !existingAddrs.has(bt.address.toLowerCase())) {
+                  brandNewTokens.push({
+                    address: bt.address,
+                    curve_address: bt.curve_address || bt.address,
+                    name: bt.name,
+                    symbol: bt.symbol,
+                    metadata_uri: bt.metadata_uri || "/jollof.png",
+                    creator_wallet: bt.creator_wallet || "0xUser...1234",
+                    migrated: Boolean(bt.migrated),
+                    raisedCngn: bt.raisedCngn || 0,
+                    description: bt.description || `${bt.name} ($${bt.symbol}) launched on Kobo Launchpad!`
+                  });
+                }
+              });
+
+              const updatedExisting = prev.map(t => {
+                const bToken = tokenData.tokens.find((bt: any) => bt.address.toLowerCase() === t.address.toLowerCase());
+                if (bToken) {
+                  return {
+                    ...t,
+                    raisedCngn: bToken.raisedCngn !== undefined ? bToken.raisedCngn : t.raisedCngn,
+                    migrated: bToken.migrated !== undefined ? bToken.migrated : t.migrated
+                  };
+                }
+                return t;
+              });
+
+              const merged = [...brandNewTokens, ...updatedExisting];
+              localStorage.setItem('kobo_tokens', JSON.stringify(merged));
+              return merged;
             });
           }
-
-          setTradesMap(prev => {
-            const merged = { ...prev };
-            for (const [addr, trades] of Object.entries(newMap)) {
-              const existingIds = new Set((merged[addr] || []).map(t => t.id));
-              const toAdd = trades.filter(t => !existingIds.has(t.id));
-              if (toAdd.length > 0) {
-                merged[addr] = [...toAdd, ...(merged[addr] || [])];
-              }
-            }
-            return merged;
-          });
-        }        if (data.tokens && Array.isArray(data.tokens)) {
-          setTokens(prev => {
-            const existingAddrs = new Set(prev.map(t => t.address.toLowerCase()));
-            const brandNewTokens: TokenItem[] = [];
-
-            data.tokens.forEach((bt: any) => {
-              if (!existingAddrs.has((bt.address || '').toLowerCase())) {
-                brandNewTokens.push({
-                  address: bt.address,
-                  curve_address: bt.curve_address || bt.address,
-                  name: bt.name,
-                  symbol: bt.symbol,
-                  metadata_uri: bt.metadata_uri || "/jollof.png",
-                  creator_wallet: bt.creator_wallet || "0xUser...1234",
-                  migrated: Boolean(bt.migrated),
-                  raisedCngn: bt.raisedCngn || 0,
-                  description: bt.description || `${bt.name} ($${bt.symbol}) launched on Kobo Launchpad!`
-                });
-              }
-            });
-
-            const updatedExisting = prev.map(t => {
-              const bToken = data.tokens.find((bt: any) => bt.address.toLowerCase() === t.address.toLowerCase());
-              if (bToken) {
-                return {
-                  ...t,
-                  raisedCngn: bToken.raisedCngn !== undefined ? bToken.raisedCngn : t.raisedCngn,
-                  migrated: bToken.migrated !== undefined ? bToken.migrated : t.migrated
-                };
-              }
-              return t;
-            });
-
-            const merged = [...brandNewTokens, ...updatedExisting];
-            localStorage.setItem('kobo_tokens', JSON.stringify(merged));
-            return merged;
-          });
         }
-      } catch (e) {}
+
+        // 2. Fetch Trades history from backend
+        const tradeRes = await fetch(`${backendUrl}/api/trades`).catch(() => null);
+        if (tradeRes && tradeRes.ok) {
+          const tradeData = await tradeRes.json();
+          if (tradeData.trades && Array.isArray(tradeData.trades)) {
+            const newMap: Record<string, TradeItem[]> = {};
+            for (const tr of tradeData.trades) {
+              const addr = (tr.token_address || '').toLowerCase();
+              if (!addr) continue;
+              if (!newMap[addr]) newMap[addr] = [];
+              newMap[addr].push({
+                id: String(tr.id || Math.random()),
+                token_address: tr.token_address,
+                trader_wallet: tr.trader_wallet,
+                side: tr.side,
+                cngn_amount: Number(tr.cngn_amount),
+                token_amount: Number(tr.token_amount),
+                price: Number(tr.price),
+                timestamp: new Date(tr.created_at || Date.now()).getTime(),
+                tx_hash: tr.tx_hash || '0x...'
+              });
+            }
+
+            setTradesMap(prev => {
+              const merged = { ...prev };
+              for (const [addr, trades] of Object.entries(newMap)) {
+                const existingIds = new Set((merged[addr] || []).map(t => t.id));
+                const toAdd = trades.filter(t => !existingIds.has(t.id));
+                if (toAdd.length > 0) {
+                  merged[addr] = [...toAdd, ...(merged[addr] || [])];
+                }
+              }
+              return merged;
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("Global polling sync notice:", e);
+      }
     };
 
     fetchGlobalSync();
-    const interval = setInterval(fetchGlobalSync, 2000);
+    const interval = setInterval(fetchGlobalSync, 1500);
     return () => clearInterval(interval);
   }, []);
 

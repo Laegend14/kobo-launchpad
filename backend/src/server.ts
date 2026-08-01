@@ -267,6 +267,7 @@ app.post('/api/tokens', (req: Request, res: Response) => {
     creator_wallet: creator_wallet || "0xUser...1234",
     migrated: false,
     raisedCngn: 0,
+    description: description || `${name} ($${symbol.toUpperCase()}) launched on Kobo Launchpad!`,
     created_at: new Date().toISOString()
   };
 
