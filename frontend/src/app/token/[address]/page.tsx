@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 export default function TokenDetailPage() {
   const params = useParams();
   const addressParam = (params.address as string) || '';
-  const { tokens, getTokenMetrics, getTokenTrades, claimCreatorFees } = useAuth();
+  const { tokens, walletAddress, getTokenMetrics, getTokenTrades, claimCreatorFees } = useAuth();
 
   const token = tokens.find(
     t => t.address.toLowerCase() === addressParam.toLowerCase()
@@ -23,6 +23,16 @@ export default function TokenDetailPage() {
 
   const metrics = getTokenMetrics(token.address);
   const trades = getTokenTrades(token.address);
+
+  const isCreator = Boolean(
+    walletAddress &&
+    token.creator_wallet &&
+    (
+      walletAddress.toLowerCase() === token.creator_wallet.toLowerCase() ||
+      token.creator_wallet.toLowerCase().includes(walletAddress.toLowerCase().substring(0, 6)) ||
+      walletAddress.toLowerCase().includes(token.creator_wallet.toLowerCase().replace('...', ''))
+    )
+  );
 
   const totalVol = metrics.buyVolume24hCngn + metrics.sellVolume24hCngn || 1;
   const buyRatio = Math.round((metrics.buyVolume24hCngn / totalVol) * 100);
@@ -375,15 +385,21 @@ export default function TokenDetailPage() {
                   <span className="text-[10px] text-slate-500 uppercase font-bold block">Accrued Royalties</span>
                   <span className="font-bold text-white text-base">{metrics.formattedCreatorFees}</span>
                 </div>
-                <button
-                  onClick={() => {
-                    const res = claimCreatorFees(token.address);
-                    alert(`Claimed ₦${res.claimedAmount.toLocaleString()} cNGN in creator fees!`);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
-                >
-                  Claim Royalties
-                </button>
+                {isCreator ? (
+                  <button
+                    onClick={() => {
+                      const res = claimCreatorFees(token.address);
+                      alert(`Claimed ₦${res.claimedAmount.toLocaleString()} cNGN in creator fees!`);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all cursor-pointer flex items-center space-x-1"
+                  >
+                    <span>Claim Royalties</span>
+                  </button>
+                ) : (
+                  <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-[11px] font-medium">
+                    🔒 Claimable by Coin Creator Only
+                  </span>
+                )}
               </div>
             </div>
 
