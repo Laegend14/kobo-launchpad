@@ -461,7 +461,11 @@ export default function TokenDetailPage() {
                   <td className="py-3 px-4 font-bold text-white">₦{tr.cngn_amount.toLocaleString('en-NG')}</td>
                   <td className="py-3 px-4 text-slate-300 font-mono">{tr.token_amount.toLocaleString()} ${token.symbol}</td>
                   <td className="py-3 px-4 text-emerald-400 font-mono">{tr.price.toFixed(8)}</td>
-                  <td className="py-3 px-4 text-slate-400 font-mono">{tr.trader_wallet}</td>
+                  <td className="py-3 px-4 text-slate-400 font-mono">
+                    {tr.trader_wallet.length > 12 
+                      ? `${tr.trader_wallet.substring(0, 6)}...${tr.trader_wallet.substring(tr.trader_wallet.length - 4)}` 
+                      : tr.trader_wallet}
+                  </td>
                   <td className="py-3 px-4 text-cyan-400 font-mono">{tr.tx_hash.substring(0, 10)}...</td>
                 </tr>
               ))}
