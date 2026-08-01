@@ -18,6 +18,7 @@ export interface TokenItem {
 interface AuthContextType {
   isLoggedIn: boolean;
   walletAddress: string | null;
+  nairaBalance: number;
   cngnBalance: number;
   tokens: TokenItem[];
   tradesMap: Record<string, TradeItem[]>;
@@ -33,6 +34,8 @@ interface AuthContextType {
   logout: () => void;
   depositNaira: (nairaAmount: number) => void;
   withdrawNaira: (nairaAmount: number) => void;
+  swapNairaToCngn: (amount: number) => boolean;
+  swapCngnToNaira: (amount: number) => boolean;
   launchToken: (name: string, symbol: string, description: string, imageUrl: string, customAddress?: string, customCurve?: string, txHash?: string) => TokenItem;
   buyToken: (tokenAddress: string, cngnAmount: number) => { tokensOut: number; priceImpact: number };
   sellToken: (tokenAddress: string, tokenAmount: number) => { cngnOut: number; priceImpact: number };
@@ -65,6 +68,7 @@ function getBackendUrl(): string {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [nairaBalance, setNairaBalance] = useState<number>(500000);
   const [cngnBalance, setCngnBalance] = useState<number>(250000);
   const [tokens, setTokens] = useState<TokenItem[]>(INITIAL_TOKENS);
   const [tradesMap, setTradesMap] = useState<Record<string, TradeItem[]>>(INITIAL_TRADES);
@@ -95,11 +99,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const savedWallet = localStorage.getItem('kobo_wallet');
       const savedBalance = localStorage.getItem('kobo_balance');
+      const savedNaira = localStorage.getItem('kobo_naira_balance');
       const savedTokens = localStorage.getItem('kobo_tokens');
       const savedTrades = localStorage.getItem('kobo_trades');
 
       if (savedWallet) setWalletAddress(savedWallet);
       if (savedBalance) setCngnBalance(parseFloat(savedBalance));
+      if (savedNaira) setNairaBalance(parseFloat(savedNaira));
       if (savedTokens) {
         try { setTokens(JSON.parse(savedTokens)); } catch (e) {}
       }
@@ -303,9 +309,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const depositNaira = (nairaAmount: number) => {
-    setCngnBalance(prev => {
+    setNairaBalance(prev => {
       const next = prev + nairaAmount;
-      localStorage.setItem('kobo_balance', next.toString());
+      localStorage.setItem('kobo_naira_balance', next.toString());
       return next;
     });
   };
@@ -316,6 +322,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('kobo_balance', next.toString());
       return next;
     });
+  };
+
+  const swapNairaToCngn = (amount: number): boolean => {
+    if (amount <= 0 || nairaBalance < amount) return false;
+    setNairaBalance(prev => {
+      const next = prev - amount;
+      localStorage.setItem('kobo_naira_balance', next.toString());
+      return next;
+    });
+    setCngnBalance(prev => {
+      const next = prev + amount;
+      localStorage.setItem('kobo_balance', next.toString());
+      return next;
+    });
+    return true;
+  };
+
+  const swapCngnToNaira = (amount: number): boolean => {
+    if (amount <= 0 || cngnBalance < amount) return false;
+    setCngnBalance(prev => {
+      const next = prev - amount;
+      localStorage.setItem('kobo_balance', next.toString());
+      return next;
+    });
+    setNairaBalance(prev => {
+      const next = prev + amount;
+      localStorage.setItem('kobo_naira_balance', next.toString());
+      return next;
+    });
+    return true;
   };
 
   const launchToken = (
@@ -564,6 +600,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         isLoggedIn: !!walletAddress,
         walletAddress,
+        nairaBalance,
         cngnBalance,
         tokens,
         tradesMap,
@@ -574,6 +611,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         depositNaira,
         withdrawNaira,
+        swapNairaToCngn,
+        swapCngnToNaira,
         launchToken,
         buyToken,
         sellToken,

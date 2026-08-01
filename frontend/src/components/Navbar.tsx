@@ -4,30 +4,27 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { 
   Wallet, 
-  ArrowUpRight, 
   PlusCircle, 
   Trophy, 
   Menu, 
   X, 
   LogOut, 
-  Coins, 
   Building2, 
-  Sparkles,
-  ArrowDownLeft,
+  ArrowDownUp,
   SendHorizontal
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
-import CngnDepositModal from './CngnDepositModal';
+import SwapModal from './SwapModal';
 import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
-  const { isLoggedIn, walletAddress, cngnBalance, logout, connectRealWeb3Wallet } = useAuth();
+  const { isLoggedIn, walletAddress, nairaBalance, cngnBalance, logout, connectRealWeb3Wallet } = useAuth();
   
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isDepositOpen, setIsDepositOpen] = useState(false);
-  const [isCngnDepositOpen, setIsCngnDepositOpen] = useState(false);
+  const [isSwapOpen, setIsSwapOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -101,27 +98,32 @@ export default function Navbar() {
                 <>
                   {/* Balance Display & Action Pill */}
                   <div className="flex items-center space-x-2 bg-[#0A0E17] border border-white/10 p-1.5 rounded-xl">
+                    <div className="px-2.5 py-1 text-xs border-r border-white/10">
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">Naira ₦</span>
+                      <span className="font-bold text-white font-mono">₦{nairaBalance.toLocaleString('en-NG')}</span>
+                    </div>
+
                     <div className="px-2.5 py-1 text-xs">
-                      <span className="text-slate-400 block text-[10px]">cNGN Balance</span>
-                      <span className="font-bold text-[#00E676]">₦{cngnBalance.toLocaleString('en-NG')}</span>
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">cNGN</span>
+                      <span className="font-bold text-[#00E676] font-mono">₦{cngnBalance.toLocaleString('en-NG')}</span>
                     </div>
 
                     <button
                       onClick={() => setIsDepositOpen(true)}
                       className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-[#00E676] border border-emerald-500/30 text-xs font-bold transition-all flex items-center space-x-1"
-                      title="Deposit Naira ₦"
+                      title="Claim Naira ₦ Faucet"
                     >
                       <Building2 className="w-3.5 h-3.5" />
                       <span>+ Naira ₦</span>
                     </button>
 
                     <button
-                      onClick={() => setIsCngnDepositOpen(true)}
+                      onClick={() => setIsSwapOpen(true)}
                       className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-bold transition-all flex items-center space-x-1"
-                      title="Deposit cNGN Stablecoin"
+                      title="Swap Naira ₦ ↔ cNGN"
                     >
-                      <ArrowDownLeft className="w-3.5 h-3.5" />
-                      <span>+ cNGN</span>
+                      <ArrowDownUp className="w-3.5 h-3.5" />
+                      <span>Swap 🔄</span>
                     </button>
 
                     <button
@@ -164,10 +166,10 @@ export default function Navbar() {
             <div className="flex md:hidden items-center space-x-2">
               {isLoggedIn && (
                 <button
-                  onClick={() => setIsDepositOpen(true)}
-                  className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-[#00E676] border border-emerald-500/30 text-xs font-bold"
+                  onClick={() => setIsSwapOpen(true)}
+                  className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-xs font-bold"
                 >
-                  + Deposit
+                  Swap 🔄
                 </button>
               )}
               <button
@@ -209,13 +211,13 @@ export default function Navbar() {
             <div className="pt-2 border-t border-white/10 space-y-2">
               {isLoggedIn ? (
                 <>
-                  <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between text-xs">
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between text-xs font-mono">
                     <div>
-                      <span className="text-slate-400 block text-[10px]">Connected Wallet</span>
-                      <span className="font-mono text-emerald-400 font-bold">{truncatedAddress}</span>
+                      <span className="text-slate-400 block text-[10px] font-inter">Naira ₦ Balance</span>
+                      <span className="font-bold text-white">₦{nairaBalance.toLocaleString('en-NG')}</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-slate-400 block text-[10px]">cNGN Balance</span>
+                      <span className="text-slate-400 block text-[10px] font-inter">cNGN Balance</span>
                       <span className="font-bold text-[#00E676]">₦{cngnBalance.toLocaleString('en-NG')}</span>
                     </div>
                   </div>
@@ -225,13 +227,13 @@ export default function Navbar() {
                       onClick={() => { setIsDepositOpen(true); setIsMobileMenuOpen(false); }}
                       className="py-2.5 rounded-xl bg-emerald-500/10 text-[#00E676] border border-emerald-500/30 text-center"
                     >
-                      + Deposit ₦
+                      + Naira ₦
                     </button>
                     <button
-                      onClick={() => { setIsCngnDepositOpen(true); setIsMobileMenuOpen(false); }}
+                      onClick={() => { setIsSwapOpen(true); setIsMobileMenuOpen(false); }}
                       className="py-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-center"
                     >
-                      + cNGN
+                      Swap 🔄
                     </button>
                     <button
                       onClick={() => { setIsWithdrawOpen(true); setIsMobileMenuOpen(false); }}
@@ -256,8 +258,8 @@ export default function Navbar() {
 
       {/* Modals */}
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
-      <DepositModal isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} />
-      <CngnDepositModal isOpen={isCngnDepositOpen} onClose={() => setIsCngnDepositOpen(false)} />
+      <DepositModal isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} onOpenSwap={() => setIsSwapOpen(true)} />
+      <SwapModal isOpen={isSwapOpen} onClose={() => setIsSwapOpen(false)} />
       <WithdrawModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
     </>
   );
