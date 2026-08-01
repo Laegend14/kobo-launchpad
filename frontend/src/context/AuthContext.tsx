@@ -150,6 +150,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const brandNewTokens: TokenItem[] = [];
 
               tokenData.tokens.forEach((bt: any) => {
+                const bRaised = bt.raisedCngn !== undefined ? Number(bt.raisedCngn) : (bt.metrics?.raisedCngn !== undefined ? Number(bt.metrics.raisedCngn) : 0);
+                const bMigrated = bt.migrated !== undefined ? Boolean(bt.migrated) : (bt.metrics?.migrated !== undefined ? Boolean(bt.metrics.migrated) : false);
+
                 if (bt.address && !existingAddrs.has(bt.address.toLowerCase())) {
                   brandNewTokens.push({
                     address: bt.address,
@@ -158,8 +161,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     symbol: bt.symbol,
                     metadata_uri: bt.metadata_uri || "/jollof.png",
                     creator_wallet: bt.creator_wallet || "0xUser...1234",
-                    migrated: Boolean(bt.migrated),
-                    raisedCngn: bt.raisedCngn || 0,
+                    migrated: bMigrated,
+                    raisedCngn: bRaised,
                     description: bt.description || `${bt.name} ($${bt.symbol}) launched on Kobo Launchpad!`
                   });
                 }
@@ -168,10 +171,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const updatedExisting = prev.map(t => {
                 const bToken = tokenData.tokens.find((bt: any) => bt.address.toLowerCase() === t.address.toLowerCase());
                 if (bToken) {
+                  const bRaised = bToken.raisedCngn !== undefined ? Number(bToken.raisedCngn) : (bToken.metrics?.raisedCngn !== undefined ? Number(bToken.metrics.raisedCngn) : t.raisedCngn);
+                  const bMigrated = bToken.migrated !== undefined ? Boolean(bToken.migrated) : (bToken.metrics?.migrated !== undefined ? Boolean(bToken.metrics.migrated) : t.migrated);
                   return {
                     ...t,
-                    raisedCngn: bToken.raisedCngn !== undefined ? bToken.raisedCngn : t.raisedCngn,
-                    migrated: bToken.migrated !== undefined ? bToken.migrated : t.migrated
+                    raisedCngn: bRaised,
+                    migrated: bMigrated
                   };
                 }
                 return t;
@@ -195,7 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (!addr) continue;
               if (!newMap[addr]) newMap[addr] = [];
               newMap[addr].push({
-                id: String(tr.id || Math.random()),
+                id: String(tr.id || tr.tx_hash || Math.random()),
                 token_address: tr.token_address,
                 trader_wallet: tr.trader_wallet,
                 side: tr.side,
@@ -209,12 +214,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             setTradesMap(prev => {
               const merged = { ...prev };
+              let changed = false;
               for (const [addr, trades] of Object.entries(newMap)) {
-                const existingIds = new Set((merged[addr] || []).map(t => t.id));
-                const toAdd = trades.filter(t => !existingIds.has(t.id));
+                const existingTxHashes = new Set((merged[addr] || []).map(t => t.tx_hash).filter(h => h && h !== '0x...'));
+                const existingIds = new Set((merged[addr] || []).map(t => String(t.id)));
+
+                const toAdd = trades.filter(t => {
+                  if (t.tx_hash && t.tx_hash !== '0x...' && existingTxHashes.has(t.tx_hash)) return false;
+                  if (existingIds.has(String(t.id))) return false;
+                  return true;
+                });
+
                 if (toAdd.length > 0) {
                   merged[addr] = [...toAdd, ...(merged[addr] || [])];
+                  changed = true;
                 }
+              }
+              if (changed) {
+                localStorage.setItem('kobo_trades', JSON.stringify(merged));
               }
               return merged;
             });
@@ -416,6 +433,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tokenAddress,
+        tokenName: token?.name,
+        tokenSymbol: token?.symbol,
         traderWallet: walletAddress || '0xUser...48f2',
         side: 'buy',
         cngnAmount,
@@ -494,6 +513,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tokenAddress,
+        tokenName: token?.name,
+        tokenSymbol: token?.symbol,
         traderWallet: walletAddress || '0xUser...48f2',
         side: 'sell',
         cngnAmount: Number(cngnOut.toFixed(2)),
