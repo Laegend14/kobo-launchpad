@@ -18,7 +18,7 @@ export default function TradeWidget({
   tokenName,
   isMigrated = false
 }: TradeWidgetProps) {
-  const { isLoggedIn, cngnBalance, login, buyToken, sellToken, tokens } = useAuth();
+  const { isLoggedIn, cngnBalance, login, buyToken, sellToken, tokens, getUserTokenHolding } = useAuth();
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState<string>('5000');
   const [slippage, setSlippage] = useState<number>(0.5);
@@ -27,6 +27,7 @@ export default function TradeWidget({
 
   const token = tokens.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
   const raisedCngn = token?.raisedCngn || 0;
+  const holding = getUserTokenHolding(tokenAddress);
 
   const numAmount = parseFloat(amount) || 0;
 
@@ -98,6 +99,23 @@ export default function TradeWidget({
           Sell ${tokenSymbol}
         </button>
       </div>
+
+      {/* User Position & Holdings Card */}
+      {isLoggedIn && (
+        <div className="p-3.5 rounded-xl bg-[#0A0E17] border border-emerald-500/30 space-y-2 bg-gradient-to-r from-emerald-500/10 via-transparent to-cyan-500/10">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-300 font-medium flex items-center space-x-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#00E676]" />
+              <span>Your ${tokenSymbol} Balance:</span>
+            </span>
+            <span className="font-bold text-white font-mono text-sm">{holding.formattedTokenAmount} ${tokenSymbol}</span>
+          </div>
+          <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5">
+            <span className="text-slate-400">Equivalent Value in cNGN:</span>
+            <span className="font-bold text-[#00E676] font-mono text-sm">{holding.formattedCngnValue}</span>
+          </div>
+        </div>
+      )}
 
       {isMigrated && (
         <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-300 flex items-center space-x-2">

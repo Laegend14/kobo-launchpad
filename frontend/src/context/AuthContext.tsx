@@ -21,6 +21,13 @@ interface AuthContextType {
   cngnBalance: number;
   tokens: TokenItem[];
   tradesMap: Record<string, TradeItem[]>;
+  userHoldings: Record<string, number>;
+  getUserTokenHolding: (tokenAddress: string) => {
+    tokenAmount: number;
+    cngnValue: number;
+    formattedTokenAmount: string;
+    formattedCngnValue: string;
+  };
   login: (address?: string) => void;
   connectRealWeb3Wallet: () => Promise<string>;
   logout: () => void;
@@ -45,19 +52,24 @@ const INITIAL_TOKENS: TokenItem[] = [
     metadata_uri: "/jollof.png",
     creator_wallet: "0x959C...81f8",
     migrated: false,
-    raisedCngn: 38500,
+    raisedCngn: 15400,
     description: "The undisputed King of West African Cuisine & Unstoppable Meme Powerhouse. Born from firewood smoke, a secret pepper blend of tatashe & rodo, and fierce national pride, Jollof Coin ($JOFF) represents the legendary, undisputed Party Jollof. No competition, no cap — pure golden smokey goodness backed 1:1 by cNGN bonding curves!"
   }
 ];
 
 const INITIAL_TRADES: Record<string, TradeItem[]> = {
   [JOFF_ADDRESS.toLowerCase()]: [
-    { id: '1', token_address: JOFF_ADDRESS, trader_wallet: '0x89A...41b0', side: 'buy', cngn_amount: 5000, token_amount: 333333333, price: 0.000015, timestamp: Date.now() - 18000000, tx_hash: '0xa71...991a' },
-    { id: '2', token_address: JOFF_ADDRESS, trader_wallet: '0x42C...980f', side: 'buy', cngn_amount: 8500, token_amount: 472222222, price: 0.000018, timestamp: Date.now() - 14400000, tx_hash: '0xb82...104c' },
-    { id: '3', token_address: JOFF_ADDRESS, trader_wallet: '0x10B...7721', side: 'sell', cngn_amount: 2000, token_amount: 105263157, price: 0.000019, timestamp: Date.now() - 10800000, tx_hash: '0xc93...215d' },
-    { id: '4', token_address: JOFF_ADDRESS, trader_wallet: '0x74D...3319', side: 'buy', cngn_amount: 12000, token_amount: 545454545, price: 0.000022, timestamp: Date.now() - 7200000, tx_hash: '0xd04...326e' },
-    { id: '5', token_address: JOFF_ADDRESS, trader_wallet: '0x99E...5501', side: 'buy', cngn_amount: 15000, token_amount: 576923076, price: 0.000026, timestamp: Date.now() - 3600000, tx_hash: '0xe15...437f' },
-    { id: '6', token_address: JOFF_ADDRESS, trader_wallet: '0x22F...1188', side: 'sell', cngn_amount: 3500, token_amount: 125000000, price: 0.000028, timestamp: Date.now() - 1800000, tx_hash: '0xf26...5480' }
+    {
+      id: "1",
+      token_address: JOFF_ADDRESS,
+      trader_wallet: "0x959C...81f8",
+      side: "buy",
+      cngn_amount: 5000,
+      token_amount: 500000,
+      price: 0.01,
+      timestamp: Date.now() - 3600000,
+      tx_hash: "0x3f8a...91b2"
+    }
   ]
 };
 
@@ -68,6 +80,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [cngnBalance, setCngnBalance] = useState<number>(250000);
   const [tokens, setTokens] = useState<TokenItem[]>(INITIAL_TOKENS);
   const [tradesMap, setTradesMap] = useState<Record<string, TradeItem[]>>(INITIAL_TRADES);
+  const [userHoldings, setUserHoldings] = useState<Record<string, number>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('kobo_user_holdings');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return { [JOFF_ADDRESS.toLowerCase()]: 500000 };
+  });
 
   useEffect(() => {
     const syncState = () => {
@@ -336,6 +357,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
+    setUserHoldings(prev => {
+      const current = prev[addrLower] || 0;
+      const next = { ...prev, [addrLower]: current + Math.round(tokensOut) };
+      localStorage.setItem('kobo_user_holdings', JSON.stringify(next));
+      return next;
+    });
+
     // Post trade to backend API for global cross-account sync
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
     fetch(`${backendUrl}/api/trades`, {
@@ -407,6 +435,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
+    setUserHoldings(prev => {
+      const current = prev[addrLower] || 0;
+      const next = { ...prev, [addrLower]: Math.max(0, current - tokenAmount) };
+      localStorage.setItem('kobo_user_holdings', JSON.stringify(next));
+      return next;
+    });
+
     // Post trade to backend API for global cross-account sync
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
     fetch(`${backendUrl}/api/trades`, {
@@ -444,6 +479,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return deriveTokenMetrics(token?.raisedCngn || 0, token?.migrated || false, trades);
   };
 
+  const getUserTokenHolding = (tokenAddress: string) => {
+    const addrLower = tokenAddress.toLowerCase();
+    const tokenAmount = userHoldings[addrLower] || 0;
+    const metrics = getTokenMetrics(tokenAddress);
+    const cngnValue = tokenAmount * metrics.priceCngn;
+
+    return {
+      tokenAmount,
+      cngnValue,
+      formattedTokenAmount: tokenAmount.toLocaleString(),
+      formattedCngnValue: `₦${cngnValue.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cNGN`
+    };
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -452,6 +501,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         cngnBalance,
         tokens,
         tradesMap,
+        userHoldings,
+        getUserTokenHolding,
         login,
         connectRealWeb3Wallet,
         logout,
