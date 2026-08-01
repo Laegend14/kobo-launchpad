@@ -160,16 +160,20 @@ export default function TradeWidget({
                   ₦{val >= 1000 ? `${val/1000}k` : val}
                 </button>
               ))
-            : [25, 50, 75, 100].map(pct => (
-                <button
-                  key={pct}
-                  type="button"
-                  onClick={() => setAmount((pct * 10000000).toString())}
-                  className="flex-1 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-center font-bold"
-                >
-                  {pct}%
-                </button>
-              ))
+            : [25, 50, 75, 100].map(pct => {
+                const sellQty = Math.floor((pct / 100) * (holding.tokenAmount || 0));
+                return (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setAmount(sellQty > 0 ? sellQty.toString() : '0')}
+                    disabled={holding.tokenAmount <= 0}
+                    className="flex-1 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-center font-bold disabled:opacity-40"
+                  >
+                    {pct}%
+                  </button>
+                );
+              })
           }
         </div>
 

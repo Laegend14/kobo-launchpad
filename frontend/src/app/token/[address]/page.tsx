@@ -19,7 +19,18 @@ export default function TokenDetailPage() {
 
   const token = tokens.find(
     t => t.address.toLowerCase() === addressParam.toLowerCase()
-  ) || tokens[0];
+  );
+
+  // Show loading/empty state if token hasn't synced yet
+  if (!token) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 font-grotesk">
+        <div className="w-12 h-12 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+        <p className="text-slate-400 text-sm">Loading token data...</p>
+        <Link href="/" className="text-xs text-emerald-400 hover:underline">← Back to feed</Link>
+      </div>
+    );
+  }
 
   const metrics = getTokenMetrics(token.address);
   const trades = getTokenTrades(token.address);
@@ -197,7 +208,7 @@ export default function TokenDetailPage() {
             </div>
             <div className="flex justify-between py-1.5">
               <span className="text-slate-400">Burned Supply</span>
-              <span className="font-bold text-slate-400">0 JOFF (0%)</span>
+              <span className="font-bold text-slate-400">0 {token.symbol} (0%)</span>
             </div>
           </div>
         </div>

@@ -15,7 +15,9 @@ app.use(express.json());
 
 function deriveBackendMetrics(token: TokenRecord) {
   const tokenTrades = inMemStore.trades.filter(tr => tr.token_address.toLowerCase() === token.address.toLowerCase());
-  const raisedCngn = tokenTrades.reduce((acc, tr) => acc + (tr.side === 'buy' ? Number(tr.cngn_amount) : -Number(tr.cngn_amount)), 38500);
+  // Use token.raisedCngn as the ground truth (updated by trades), start from 0 not 38500
+  const tradeRaised = tokenTrades.reduce((acc, tr) => acc + (tr.side === 'buy' ? Number(tr.cngn_amount) : -Number(tr.cngn_amount)), 0);
+  const raisedCngn = Math.max(0, token.raisedCngn !== undefined ? token.raisedCngn : tradeRaised);
 
   const virtualCngn = 10000 + Math.max(0, raisedCngn);
   const virtualToken = (10000 * 1000000000) / virtualCngn;
@@ -33,8 +35,21 @@ function deriveBackendMetrics(token: TokenRecord) {
     else sellVolume += Number(tr.cngn_amount);
   });
 
-  const volume24hCngn = (buyVolume + sellVolume) || (raisedCngn * 0.7);
+  const volume24hCngn = buyVolume + sellVolume;
   const progressPercent = token.migrated ? 100 : Math.min(100, Math.max(0, (raisedCngn / 50000) * 100));
+
+  // Accurate holder count from trade history
+  const walletBalances: Record<string, number> = {};
+  tokenTrades.forEach(tr => {
+    const w = (tr.trader_wallet || '').toLowerCase();
+    if (!w) return;
+    if (!walletBalances[w]) walletBalances[w] = 0;
+    if (tr.side === 'buy') walletBalances[w] += Number(tr.token_amount);
+    else walletBalances[w] = Math.max(0, walletBalances[w] - Number(tr.token_amount));
+  });
+  const activeHolders = Object.values(walletBalances).filter(bal => bal > 0).length;
+  const uniqueTraders = new Set(tokenTrades.map(t => (t.trader_wallet || '').toLowerCase()).filter(Boolean)).size;
+  const holderCount = Math.max(activeHolders || uniqueTraders, token.raisedCngn ? 1 : 0);
 
   return {
     priceCngn: currentPrice,
@@ -52,7 +67,7 @@ function deriveBackendMetrics(token: TokenRecord) {
     progressPercent: Number(progressPercent.toFixed(2)),
     raisedCngn,
     migrationThreshold: 50000,
-    holderCount: Math.max(1, new Set(tokenTrades.map(t => (t.trader_wallet || '').toLowerCase()).filter(Boolean)).size),
+    holderCount,
     security: {
       mintDisabled: true,
       renouncedOwnership: true,
@@ -63,7 +78,7 @@ function deriveBackendMetrics(token: TokenRecord) {
 
 // 1. GET /api/tokens - List all tokens
 app.get('/api/tokens', (req: Request, res: Response) => {
-  const { sort, search } = req.query;
+  const { search } = req.query;
   let list = [...inMemStore.tokens];
 
   if (search) {
@@ -100,27 +115,44 @@ app.get('/api/tokens/:address', (req: Request, res: Response) => {
 app.get('/api/tokens/:address/trades', (req: Request, res: Response) => {
   const address = req.params.address.toLowerCase();
   const trades = inMemStore.trades.filter(tr => tr.token_address.toLowerCase() === address);
-
-  // Generate candle data or trades list
   res.json({ trades });
 });
 
-// 4. POST /api/tokens - Launch token metadata pre-upload
+// 4. POST /api/tokens - Create and broadcast new token globally across all accounts
+// Handles BOTH snake_case (from AuthContext) and camelCase (from legacy routes) field names
 app.post('/api/tokens', (req: Request, res: Response) => {
-  const { name, symbol, metadataURI, creatorWallet, address, curveAddress } = req.body;
+  // Support both snake_case and camelCase field names from client
+  const address = req.body.address;
+  const curve_address = req.body.curve_address || req.body.curveAddress;
+  const name = req.body.name;
+  const symbol = req.body.symbol;
+  const metadata_uri = req.body.metadata_uri || req.body.metadataURI;
+  const creator_wallet = req.body.creator_wallet || req.body.creatorWallet;
+  const description = req.body.description;
 
-  if (!name || !symbol || !creatorWallet) {
-    return res.status(400).json({ error: "Missing required fields" });
+  if (!name || !symbol) {
+    return res.status(400).json({ error: "Missing required token fields: name and symbol" });
+  }
+
+  // Deduplicate: return existing token if address matches
+  if (address) {
+    const existing = inMemStore.tokens.find(t => t.address.toLowerCase() === address.toLowerCase());
+    if (existing) {
+      return res.json({ token: existing });
+    }
   }
 
   const newToken: TokenRecord = {
-    address: address || `0x${Math.random().toString(16).substring(2)}${Date.now().toString(16)}`.substring(0, 42),
-    curve_address: curveAddress || `0x${Math.random().toString(16).substring(2)}${Date.now().toString(16)}`.substring(0, 42),
+    id: inMemStore.tokens.length + 1,
+    address: address || `0x${Math.random().toString(16).substring(2, 42)}`,
+    curve_address: curve_address || `0x${Math.random().toString(16).substring(2, 42)}`,
     name,
     symbol: symbol.toUpperCase(),
-    metadata_uri: metadataURI || "https://images.unsplash.com/photo-1622979135225-d2ba269bc1bd?w=400",
-    creator_wallet: creatorWallet,
+    metadata_uri: metadata_uri || "/jollof.png",
+    creator_wallet: creator_wallet || "0xUser...1234",
     migrated: false,
+    raisedCngn: 0,
+    description: description || `${name} ($${symbol.toUpperCase()}) launched on Kobo Launchpad!`,
     created_at: new Date().toISOString()
   };
 
@@ -195,13 +227,15 @@ app.post('/api/users/kyc', (req: Request, res: Response) => {
   res.json({ message: "KYC verification successful (Testnet Auto-Approved)", status: 'approved' });
 });
 
-// 10. GET /api/leaderboard - Top tokens
+// 10. GET /api/leaderboard - Top tokens sorted by raised cNGN
 app.get('/api/leaderboard', (req: Request, res: Response) => {
-  const sorted = [...inMemStore.tokens].map((t, idx) => ({
-    rank: idx + 1,
-    ...t,
-    metrics: deriveBackendMetrics(t)
-  }));
+  const sorted = [...inMemStore.tokens]
+    .sort((a, b) => (b.raisedCngn || 0) - (a.raisedCngn || 0))
+    .map((t, idx) => ({
+      rank: idx + 1,
+      ...t,
+      metrics: deriveBackendMetrics(t)
+    }));
   res.json({ leaderboard: sorted });
 });
 
@@ -218,8 +252,8 @@ app.post('/api/trades', (req: Request, res: Response) => {
     trader_wallet: traderWallet,
     side,
     cngn_amount: String(cngnAmount),
-    token_amount: String(tokenAmount),
-    price: String(price),
+    token_amount: String(tokenAmount || 0),
+    price: String(price || 0),
     tx_hash: txHash || `0x${Math.random().toString(16).substring(2)}${Date.now().toString(16)}`,
     created_at: new Date().toISOString()
   };
@@ -245,34 +279,9 @@ app.get('/api/trades', (req: Request, res: Response) => {
   res.json({ trades: inMemStore.trades, tokens: inMemStore.tokens });
 });
 
-// 13. POST /api/tokens - Create and broadcast new token globally across all accounts
-app.post('/api/tokens', (req: Request, res: Response) => {
-  const { address, curve_address, name, symbol, metadata_uri, creator_wallet, description } = req.body;
-  if (!name || !symbol) {
-    return res.status(400).json({ error: "Missing required token fields" });
-  }
-
-  const existing = inMemStore.tokens.find(t => t.address.toLowerCase() === (address || '').toLowerCase());
-  if (existing) {
-    return res.json({ token: existing });
-  }
-
-  const newToken: TokenRecord = {
-    id: inMemStore.tokens.length + 1,
-    address: address || `0x${Math.random().toString(16).substring(2, 42)}`,
-    curve_address: curve_address || `0x${Math.random().toString(16).substring(2, 42)}`,
-    name,
-    symbol: symbol.toUpperCase(),
-    metadata_uri: metadata_uri || "/jollof.png",
-    creator_wallet: creator_wallet || "0xUser...1234",
-    migrated: false,
-    raisedCngn: 0,
-    description: description || `${name} ($${symbol.toUpperCase()}) launched on Kobo Launchpad!`,
-    created_at: new Date().toISOString()
-  };
-
-  inMemStore.tokens.unshift(newToken);
-  res.status(201).json({ token: newToken });
+// Health check
+app.get('/api/health', (req: Request, res: Response) => {
+  res.json({ status: 'ok', tokensCount: inMemStore.tokens.length, tradesCount: inMemStore.trades.length });
 });
 
 app.listen(port, () => {
