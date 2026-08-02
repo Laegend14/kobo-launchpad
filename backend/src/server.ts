@@ -10,7 +10,8 @@ import {
   saveTokenDB,
   getAllTradesDB,
   saveTradeDB,
-  updateTokenReserveDB
+  updateTokenReserveDB,
+  clearAllDataDB
 } from './db';
 import { MockFiatRampAdapter } from './adapters/mockFiatRampAdapter';
 
@@ -410,6 +411,12 @@ app.get('/api/stats', async (req: Request, res: Response) => {
       locked: `₦${Math.round(totalLocked).toLocaleString('en-NG')}`,
     }
   });
+});
+
+// Reset / Purge all tokens & trades for fresh testing
+app.post('/api/reset', async (req: Request, res: Response) => {
+  await clearAllDataDB();
+  res.json({ message: "All test tokens and trade records purged successfully. Launch fresh memecoins!" });
 });
 
 // Health check

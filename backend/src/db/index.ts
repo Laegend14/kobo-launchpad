@@ -365,3 +365,18 @@ export async function saveTradeDB(trade: TradeRecord): Promise<TradeRecord> {
 
   return trade;
 }
+
+// Reset / Purge all test data across PostgreSQL, Supabase, and in-memory store
+export async function clearAllDataDB() {
+  inMemStore.tokens = [];
+  inMemStore.trades = [];
+
+  await queryDB('TRUNCATE TABLE trades, tokens CASCADE');
+
+  try {
+    await supabase.from('trades').delete().neq('tx_hash', '0x_none');
+    await supabase.from('tokens').delete().neq('address', '0x_none');
+  } catch (err) {
+    // Non-blocking fallback
+  }
+}
