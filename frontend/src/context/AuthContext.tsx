@@ -150,6 +150,91 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { channel.close(); broadcastRef.current = null; };
   }, []);
 
+  // Server-Sent Events (SSE) Stream Connection for Instant Multi-User & Multi-Device Real-Time Sync
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('EventSource' in window)) return;
+
+    let eventSource: EventSource | null = null;
+    try {
+      const backendUrl = getBackendUrl();
+      eventSource = new EventSource(`${backendUrl}/api/events`);
+
+      eventSource.addEventListener('TRADE', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          const { trade, updatedToken } = data || {};
+          if (!trade || !trade.token_address) return;
+          const addr = trade.token_address.toLowerCase();
+
+          const formattedTrade: TradeItem = {
+            id: String(trade.id || trade.tx_hash),
+            token_address: trade.token_address,
+            trader_wallet: trade.trader_wallet,
+            side: trade.side,
+            cngn_amount: Number(trade.cngn_amount),
+            token_amount: Number(trade.token_amount),
+            price: Number(trade.price),
+            timestamp: new Date(trade.created_at || Date.now()).getTime(),
+            tx_hash: trade.tx_hash || '0x...'
+          };
+
+          setTradesMap(prev => {
+            const existing = prev[addr] || [];
+            if (existing.some(t => t.tx_hash === formattedTrade.tx_hash)) return prev;
+            const next = { ...prev, [addr]: [formattedTrade, ...existing] };
+            localStorage.setItem('kobo_trades', JSON.stringify(next));
+            return next;
+          });
+
+          if (updatedToken) {
+            setTokens(prev => {
+              const next = prev.map(t => {
+                if (t.address.toLowerCase() !== addr) return t;
+                const localRaised = t.raisedCngn ?? 0;
+                const streamRaised = updatedToken.raisedCngn ?? localRaised;
+                const safeRaised = trade.side === 'buy'
+                  ? Math.max(localRaised, streamRaised)
+                  : streamRaised;
+
+                return {
+                  ...t,
+                  raisedCngn: safeRaised,
+                  migrated: (t.migrated ?? false) || (updatedToken.migrated ?? false)
+                };
+              });
+              localStorage.setItem('kobo_tokens', JSON.stringify(next));
+              return next;
+            });
+          }
+        } catch (err) {
+          console.warn("SSE trade parse notice:", err);
+        }
+      });
+
+      eventSource.addEventListener('LAUNCH', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          const { token } = data || {};
+          if (!token || !token.address) return;
+          setTokens(prev => {
+            if (prev.some(t => t.address.toLowerCase() === token.address.toLowerCase())) return prev;
+            const next = [token, ...prev];
+            localStorage.setItem('kobo_tokens', JSON.stringify(next));
+            return next;
+          });
+        } catch (err) {
+          console.warn("SSE launch parse notice:", err);
+        }
+      });
+    } catch (err) {
+      console.warn("SSE connection notice:", err);
+    }
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, []);
+
   useEffect(() => {
     const syncState = () => {
       // Force purge cached tokens on every new test cycle — bump version to re-trigger

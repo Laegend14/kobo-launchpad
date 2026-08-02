@@ -1,7 +1,17 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { inMemStore, TokenRecord, TradeRecord } from './db';
+import {
+  inMemStore,
+  TokenRecord,
+  TradeRecord,
+  initDB,
+  getAllTokensDB,
+  saveTokenDB,
+  getAllTradesDB,
+  saveTradeDB,
+  updateTokenReserveDB
+} from './db';
 import { MockFiatRampAdapter } from './adapters/mockFiatRampAdapter';
 
 dotenv.config();
@@ -13,9 +23,22 @@ const fiatAdapter = new MockFiatRampAdapter();
 app.use(cors());
 app.use(express.json());
 
-function deriveBackendMetrics(token: TokenRecord) {
-  const tokenTrades = inMemStore.trades.filter(tr => tr.token_address.toLowerCase() === token.address.toLowerCase());
-  // Derive total raised from trades
+// Server-Sent Events (SSE) Client Connections for Realtime Push Sync
+const sseClients: Response[] = [];
+
+function broadcastSSE(event: string, data: any) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  sseClients.forEach((client, idx) => {
+    try {
+      client.write(payload);
+    } catch {
+      sseClients.splice(idx, 1);
+    }
+  });
+}
+
+function deriveBackendMetrics(token: TokenRecord, allTrades: TradeRecord[]) {
+  const tokenTrades = allTrades.filter(tr => tr.token_address.toLowerCase() === token.address.toLowerCase());
   const tradeRaised = tokenTrades.reduce((acc, tr) => acc + (tr.side === 'buy' ? Number(tr.cngn_amount) : -Number(tr.cngn_amount)), 0);
   const raisedCngn = Math.max(0, token.raisedCngn !== undefined ? token.raisedCngn : tradeRaised);
 
@@ -38,7 +61,6 @@ function deriveBackendMetrics(token: TokenRecord) {
   const volume24hCngn = buyVolume + sellVolume;
   const progressPercent = token.migrated ? 100 : Math.min(100, Math.max(0, (raisedCngn / 50000) * 100));
 
-  // Accurate holder count from trade history
   const walletBalances: Record<string, number> = {};
   tokenTrades.forEach(tr => {
     const w = (tr.trader_wallet || '').toLowerCase();
@@ -77,10 +99,26 @@ function deriveBackendMetrics(token: TokenRecord) {
   };
 }
 
+// Real-Time SSE Endpoint for Thousands of Concurrent Traders
+app.get('/api/events', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  sseClients.push(res);
+
+  req.on('close', () => {
+    const idx = sseClients.indexOf(res);
+    if (idx !== -1) sseClients.splice(idx, 1);
+  });
+});
+
 // 1. GET /api/tokens - List all tokens
-app.get('/api/tokens', (req: Request, res: Response) => {
+app.get('/api/tokens', async (req: Request, res: Response) => {
   const { search } = req.query;
-  let list = [...inMemStore.tokens];
+  let list = await getAllTokensDB();
+  const allTrades = await getAllTradesDB();
 
   if (search) {
     const q = String(search).toLowerCase();
@@ -88,7 +126,7 @@ app.get('/api/tokens', (req: Request, res: Response) => {
   }
 
   const enriched = list.map(t => {
-    const metrics = deriveBackendMetrics(t);
+    const metrics = deriveBackendMetrics(t, allTrades);
     return {
       ...t,
       raisedCngn: metrics.raisedCngn,
@@ -101,15 +139,17 @@ app.get('/api/tokens', (req: Request, res: Response) => {
 });
 
 // 2. GET /api/tokens/:address - Single token detail
-app.get('/api/tokens/:address', (req: Request, res: Response) => {
+app.get('/api/tokens/:address', async (req: Request, res: Response) => {
   const address = req.params.address.toLowerCase();
-  const token = inMemStore.tokens.find(t => t.address.toLowerCase() === address);
+  const list = await getAllTokensDB();
+  const token = list.find(t => t.address.toLowerCase() === address);
 
   if (!token) {
     return res.status(404).json({ error: "Token not found" });
   }
 
-  const metrics = deriveBackendMetrics(token);
+  const allTrades = await getAllTradesDB();
+  const metrics = deriveBackendMetrics(token, allTrades);
   res.json({
     token: {
       ...token,
@@ -121,14 +161,15 @@ app.get('/api/tokens/:address', (req: Request, res: Response) => {
 });
 
 // 3. GET /api/tokens/:address/trades - Trade history for chart
-app.get('/api/tokens/:address/trades', (req: Request, res: Response) => {
+app.get('/api/tokens/:address/trades', async (req: Request, res: Response) => {
   const address = req.params.address.toLowerCase();
-  const trades = inMemStore.trades.filter(tr => tr.token_address.toLowerCase() === address);
+  const allTrades = await getAllTradesDB();
+  const trades = allTrades.filter(tr => tr.token_address.toLowerCase() === address);
   res.json({ trades });
 });
 
-// 4. POST /api/tokens - Create and broadcast new token globally across all accounts
-app.post('/api/tokens', (req: Request, res: Response) => {
+// 4. POST /api/tokens - Create and broadcast new token globally
+app.post('/api/tokens', async (req: Request, res: Response) => {
   const address = req.body.address;
   const curve_address = req.body.curve_address || req.body.curveAddress;
   const name = req.body.name;
@@ -141,18 +182,20 @@ app.post('/api/tokens', (req: Request, res: Response) => {
     return res.status(400).json({ error: "Missing required token fields: name and symbol" });
   }
 
+  const existingList = await getAllTokensDB();
   if (address) {
-    const existing = inMemStore.tokens.find(t => t.address.toLowerCase() === address.toLowerCase());
+    const existing = existingList.find(t => t.address.toLowerCase() === address.toLowerCase());
     if (existing) {
-      const metrics = deriveBackendMetrics(existing);
+      const allTrades = await getAllTradesDB();
+      const metrics = deriveBackendMetrics(existing, allTrades);
       return res.json({ token: { ...existing, raisedCngn: metrics.raisedCngn, migrated: metrics.migrated, metrics } });
     }
   }
 
   const newToken: TokenRecord = {
-    id: inMemStore.tokens.length + 1,
-    address: address || `0x${Math.random().toString(16).substring(2, 42)}`,
-    curve_address: curve_address || `0x${Math.random().toString(16).substring(2, 42)}`,
+    id: existingList.length + 1,
+    address: (address || `0x${Math.random().toString(16).substring(2, 42)}`).toLowerCase(),
+    curve_address: (curve_address || `0x${Math.random().toString(16).substring(2, 42)}`).toLowerCase(),
     name,
     symbol: symbol.toUpperCase(),
     metadata_uri: metadata_uri || "/jollof.png",
@@ -163,9 +206,15 @@ app.post('/api/tokens', (req: Request, res: Response) => {
     created_at: new Date().toISOString()
   };
 
-  inMemStore.tokens.unshift(newToken);
-  const metrics = deriveBackendMetrics(newToken);
-  res.status(201).json({ token: { ...newToken, raisedCngn: 0, migrated: false, metrics } });
+  const saved = await saveTokenDB(newToken);
+  const allTrades = await getAllTradesDB();
+  const metrics = deriveBackendMetrics(saved, allTrades);
+  const result = { ...saved, raisedCngn: 0, migrated: false, metrics };
+
+  // Broadcast real-time creation to thousands of connected clients
+  broadcastSSE('LAUNCH', { token: result });
+
+  res.status(201).json({ token: result });
 });
 
 // 5. POST /api/deposits - Request deposit instructions
@@ -183,18 +232,18 @@ app.post('/api/deposits', async (req: Request, res: Response) => {
   }
 });
 
-// 6. POST /api/deposits/:id/confirm - Simulate bank transfer received
+// 6. POST /api/deposits/:id/confirm - Confirm deposit
 app.post('/api/deposits/:id/confirm', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const result = await fiatAdapter.confirmDeposit(id);
-    res.json({ message: "Deposit confirmed and mcNGN minted", ...result });
+    res.json({ message: "Deposit confirmed and cNGN minted", ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 7. POST /api/withdrawals - Request withdrawal (simulated redemption)
+// 7. POST /api/withdrawals - Request withdrawal
 app.post('/api/withdrawals', async (req: Request, res: Response) => {
   const { userWallet, amountNaira } = req.body;
   if (!userWallet || !amountNaira) {
@@ -209,7 +258,7 @@ app.post('/api/withdrawals', async (req: Request, res: Response) => {
   }
 });
 
-// 8. GET /api/users/:wallet/balance - Get user balance
+// 8. GET /api/users/:wallet/balance
 app.get('/api/users/:wallet/balance', async (req: Request, res: Response) => {
   const { wallet } = req.params;
   const cngnBalance = await fiatAdapter.getBalance(wallet);
@@ -220,7 +269,7 @@ app.get('/api/users/:wallet/balance', async (req: Request, res: Response) => {
   });
 });
 
-// 9. POST /api/users/kyc - Stub KYC submission
+// 9. POST /api/users/kyc
 app.post('/api/users/kyc', (req: Request, res: Response) => {
   const { wallet, bvn, nin, fullName } = req.body;
   if (!wallet) return res.status(400).json({ error: "Wallet required" });
@@ -236,15 +285,18 @@ app.post('/api/users/kyc', (req: Request, res: Response) => {
 });
 
 // 10. GET /api/leaderboard - Top tokens sorted by raised cNGN
-app.get('/api/leaderboard', (req: Request, res: Response) => {
-  const sorted = [...inMemStore.tokens]
+app.get('/api/leaderboard', async (req: Request, res: Response) => {
+  const tokens = await getAllTokensDB();
+  const allTrades = await getAllTradesDB();
+
+  const sorted = [...tokens]
     .sort((a, b) => {
-      const mA = deriveBackendMetrics(a);
-      const mB = deriveBackendMetrics(b);
+      const mA = deriveBackendMetrics(a, allTrades);
+      const mB = deriveBackendMetrics(b, allTrades);
       return mB.raisedCngn - mA.raisedCngn;
     })
     .map((t, idx) => {
-      const metrics = deriveBackendMetrics(t);
+      const metrics = deriveBackendMetrics(t, allTrades);
       return {
         rank: idx + 1,
         ...t,
@@ -256,20 +308,21 @@ app.get('/api/leaderboard', (req: Request, res: Response) => {
   res.json({ leaderboard: sorted });
 });
 
-// 11. POST /api/trades - Record a new trade (shared globally)
-app.post('/api/trades', (req: Request, res: Response) => {
+// 11. POST /api/trades - Record a new trade (scaled DB persistence + SSE broadcast)
+app.post('/api/trades', async (req: Request, res: Response) => {
   const { tokenAddress, tokenName, tokenSymbol, traderWallet, side, cngnAmount, tokenAmount, price, txHash } = req.body;
   if (!tokenAddress || !traderWallet || !side || !cngnAmount) {
     return res.status(400).json({ error: "Missing trade parameters" });
   }
 
   const addrLower = tokenAddress.toLowerCase();
+  const tokens = await getAllTokensDB();
 
   // Auto-register missing token on backend if not present
-  let token = inMemStore.tokens.find(t => t.address.toLowerCase() === addrLower);
+  let token = tokens.find(t => t.address.toLowerCase() === addrLower);
   if (!token) {
     token = {
-      id: inMemStore.tokens.length + 1,
+      id: tokens.length + 1,
       address: addrLower,
       curve_address: addrLower,
       name: tokenName || "Memecoin",
@@ -281,11 +334,11 @@ app.post('/api/trades', (req: Request, res: Response) => {
       description: `${tokenName || 'Memecoin'} launched on Kobo Launchpad!`,
       created_at: new Date().toISOString()
     };
-    inMemStore.tokens.unshift(token);
+    await saveTokenDB(token);
   }
 
   const newTrade: TradeRecord = {
-    id: inMemStore.trades.length + 1,
+    id: Date.now(),
     token_address: addrLower,
     trader_wallet: traderWallet,
     side,
@@ -296,56 +349,51 @@ app.post('/api/trades', (req: Request, res: Response) => {
     created_at: new Date().toISOString()
   };
 
-  inMemStore.trades.unshift(newTrade);
+  const savedTrade = await saveTradeDB(newTrade);
 
   // Update token raised reserve
+  let newRaised = token.raisedCngn || 0;
   if (side === 'buy') {
-    token.raisedCngn = (token.raisedCngn || 0) + Number(cngnAmount);
-    if (token.raisedCngn >= 50000) token.migrated = true;
+    newRaised = newRaised + Number(cngnAmount);
   } else {
-    token.raisedCngn = Math.max(0, (token.raisedCngn || 0) - Number(cngnAmount));
+    newRaised = Math.max(0, newRaised - Number(cngnAmount));
   }
+  const isMigrated = token.migrated || newRaised >= 50000;
+  await updateTokenReserveDB(addrLower, newRaised, isMigrated);
 
-  const metrics = deriveBackendMetrics(token);
+  const updatedToken = { ...token, raisedCngn: newRaised, migrated: isMigrated };
+  const allTrades = await getAllTradesDB();
+  const metrics = deriveBackendMetrics(updatedToken, allTrades);
+  const tokenResult = { ...updatedToken, metrics };
+
+  // Broadcast trade live to thousands of connected browser tabs via SSE
+  broadcastSSE('TRADE', { trade: savedTrade, updatedToken: tokenResult });
 
   res.status(201).json({
-    trade: newTrade,
-    token: { ...token, raisedCngn: metrics.raisedCngn, migrated: metrics.migrated, metrics }
+    trade: savedTrade,
+    token: tokenResult
   });
 });
 
 // 12. GET /api/trades - All global trades across tokens
-app.get('/api/trades', (req: Request, res: Response) => {
-  res.json({ trades: inMemStore.trades, tokens: inMemStore.tokens });
+app.get('/api/trades', async (req: Request, res: Response) => {
+  const trades = await getAllTradesDB();
+  const tokens = await getAllTokensDB();
+  res.json({ trades, tokens });
 });
 
 // 13. GET /api/stats - Global protocol statistics
-app.get('/api/stats', (req: Request, res: Response) => {
-  const trades = inMemStore.trades;
-  const tokens = inMemStore.tokens;
+app.get('/api/stats', async (req: Request, res: Response) => {
+  const trades = await getAllTradesDB();
+  const tokens = await getAllTokensDB();
 
-  // Total cNGN volume traded (sum of all trade amounts)
   const totalVolumeCngn = trades.reduce((acc, tr) => acc + Number(tr.cngn_amount), 0);
-
-  // Unique trader wallets across all trades
   const uniqueTraders = new Set(trades.map(t => (t.trader_wallet || '').toLowerCase()).filter(Boolean));
-
-  // Unique deployer (creator) wallets
   const uniqueDeployers = new Set(tokens.map(t => (t.creator_wallet || '').toLowerCase()).filter(Boolean));
-
-  // All unique wallets that have interacted (traders + deployers)
   const allWallets = new Set([...uniqueTraders, ...uniqueDeployers]);
-
-  // Total trades
   const totalTrades = trades.length;
-
-  // Tokens launched
   const totalTokens = tokens.length;
-
-  // Tokens that graduated (migrated to Uniswap)
   const migratedTokens = tokens.filter(t => t.migrated).length;
-
-  // Total liquidity locked across all curves (sum of raisedCngn for non-migrated)
   const totalLocked = tokens.reduce((acc, t) => acc + Math.max(0, t.raisedCngn || 0), 0);
 
   res.json({
@@ -357,7 +405,6 @@ app.get('/api/stats', (req: Request, res: Response) => {
     uniqueDeployers: uniqueDeployers.size,
     totalUniqueWallets: allWallets.size,
     totalLiquidityLockedCngn: Math.round(totalLocked),
-    // Formatted helpers
     formatted: {
       volume: `₦${Math.round(totalVolumeCngn).toLocaleString('en-NG')}`,
       locked: `₦${Math.round(totalLocked).toLocaleString('en-NG')}`,
@@ -367,9 +414,12 @@ app.get('/api/stats', (req: Request, res: Response) => {
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', tokensCount: inMemStore.tokens.length, tradesCount: inMemStore.trades.length });
+  res.json({ status: 'ok', sseClientsCount: sseClients.length });
 });
 
-app.listen(port, () => {
-  console.log(`Kobo Launchpad Backend running on http://localhost:${port}`);
+// Initialize database schema and start server
+initDB().then(() => {
+  app.listen(port, () => {
+    console.log(`🚀 Kobo Launchpad Backend running at http://localhost:${port}`);
+  });
 });

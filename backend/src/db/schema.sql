@@ -1,48 +1,66 @@
+-- =========================================================
+-- KOBO Launchpad — PostgreSQL / Supabase Production Schema
+-- =========================================================
+
+-- 1. Tokens Table
 CREATE TABLE IF NOT EXISTS tokens (
-  address           TEXT PRIMARY KEY,
-  curve_address     TEXT NOT NULL,
-  name              TEXT NOT NULL,
-  symbol            TEXT NOT NULL,
-  metadata_uri      TEXT,
-  creator_wallet    TEXT NOT NULL,
-  migrated          BOOLEAN DEFAULT FALSE,
-  pair_address      TEXT,
-  created_at        TIMESTAMPTZ DEFAULT now()
+  address VARCHAR(66) PRIMARY KEY,
+  curve_address VARCHAR(66) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  symbol VARCHAR(20) NOT NULL,
+  metadata_uri TEXT DEFAULT '/jollof.png',
+  creator_wallet VARCHAR(66) NOT NULL,
+  migrated BOOLEAN DEFAULT FALSE,
+  raised_cngn NUMERIC(20, 4) DEFAULT 0,
+  pair_address VARCHAR(66),
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 2. Trades Table
 CREATE TABLE IF NOT EXISTS trades (
-  id                SERIAL PRIMARY KEY,
-  token_address     TEXT REFERENCES tokens(address),
-  trader_wallet     TEXT NOT NULL,
-  side              TEXT CHECK (side IN ('buy','sell')),
-  cngn_amount       NUMERIC NOT NULL,
-  token_amount      NUMERIC NOT NULL,
-  price             NUMERIC NOT NULL,
-  tx_hash           TEXT UNIQUE NOT NULL,
-  created_at        TIMESTAMPTZ DEFAULT now()
+  id BIGSERIAL PRIMARY KEY,
+  token_address VARCHAR(66) NOT NULL REFERENCES tokens(address) ON DELETE CASCADE,
+  trader_wallet VARCHAR(66) NOT NULL,
+  side VARCHAR(10) NOT NULL CHECK (side IN ('buy', 'sell')),
+  cngn_amount NUMERIC(20, 4) NOT NULL,
+  token_amount NUMERIC(30, 4) NOT NULL,
+  price NUMERIC(30, 12) NOT NULL,
+  tx_hash VARCHAR(100) UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 3. Deposits Table
 CREATE TABLE IF NOT EXISTS deposits (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_wallet       TEXT NOT NULL,
-  amount_naira      NUMERIC NOT NULL,
-  status            TEXT CHECK (status IN ('pending','completed','failed')) DEFAULT 'pending',
-  tx_hash           TEXT,
-  created_at        TIMESTAMPTZ DEFAULT now()
+  id VARCHAR(100) PRIMARY KEY,
+  user_wallet VARCHAR(66) NOT NULL,
+  amount_naira NUMERIC(20, 4) NOT NULL,
+  status VARCHAR(20) DEFAULT 'completed',
+  tx_hash VARCHAR(100),
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 4. Withdrawals Table
 CREATE TABLE IF NOT EXISTS withdrawals (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_wallet       TEXT NOT NULL,
-  amount_naira      NUMERIC NOT NULL,
-  status            TEXT CHECK (status IN ('pending','completed','failed')) DEFAULT 'pending',
-  bank_reference    TEXT,
-  created_at        TIMESTAMPTZ DEFAULT now()
+  id VARCHAR(100) PRIMARY KEY,
+  user_wallet VARCHAR(66) NOT NULL,
+  amount_naira NUMERIC(20, 4) NOT NULL,
+  status VARCHAR(20) DEFAULT 'completed',
+  bank_reference VARCHAR(100),
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 5. Users / KYC Table
 CREATE TABLE IF NOT EXISTS users (
-  wallet            TEXT PRIMARY KEY,
-  kyc_status        TEXT CHECK (kyc_status IN ('none','pending','approved')) DEFAULT 'none',
-  kyc_fields        JSONB,
-  created_at        TIMESTAMPTZ DEFAULT now()
+  wallet VARCHAR(66) PRIMARY KEY,
+  kyc_status VARCHAR(20) DEFAULT 'approved',
+  kyc_fields JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Performance Indexes for Scalability (Thousands of Traders)
+CREATE INDEX IF NOT EXISTS idx_trades_token_address ON trades(token_address);
+CREATE INDEX IF NOT EXISTS idx_trades_trader_wallet ON trades(trader_wallet);
+CREATE INDEX IF NOT EXISTS idx_trades_created_at ON trades(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tokens_created_at ON tokens(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tokens_raised_cngn ON tokens(raised_cngn DESC);
