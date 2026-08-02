@@ -131,8 +131,15 @@ export async function launchTokenOnChain(
 
     console.log(`[On-Chain] Launching token on Arc Testnet via TokenFactory (${TOKEN_FACTORY_ADDRESS})...`);
 
+    // Sanitize metadataUri for EVM calldata — if it's a huge base64 Data URL or >200 chars,
+    // convert to a compact URI to stay within EVM 128KB transaction calldata limits.
+    let cleanMetadataUri = metadataUri || "/jollof.png";
+    if (cleanMetadataUri.startsWith('data:') || cleanMetadataUri.length > 200) {
+      cleanMetadataUri = "/jollof.png";
+    }
+
     // Use explicit gasLimit: 3500000 to bypass estimateGas revert issues on RPC providers
-    const tx = await factoryContract.launchToken(name, symbol, metadataUri || "/jollof.png", {
+    const tx = await factoryContract.launchToken(name, symbol, cleanMetadataUri, {
       gasLimit: 3500000
     });
     console.log(`[On-Chain] Tx sent: ${tx.hash}. Waiting for block confirmation...`);
