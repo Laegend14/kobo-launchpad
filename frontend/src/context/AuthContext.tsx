@@ -305,62 +305,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const backendUrl = getBackendUrl();
         
-        // 1. Fetch Tokens list from backend
+        // 1. Fetch Tokens list from backend & Supabase DB
+        let fetchedTokens: any[] = [];
         const tokenRes = await fetch(`${backendUrl}/api/tokens`).catch(() => null);
         if (tokenRes && tokenRes.ok) {
           const tokenData = await tokenRes.json();
           if (tokenData.tokens && Array.isArray(tokenData.tokens)) {
-            setTokens(prev => {
-              const existingAddrs = new Set(prev.map(t => t.address.toLowerCase()));
-              const brandNewTokens: TokenItem[] = [];
+            fetchedTokens = tokenData.tokens;
+          }
+        }
 
-              tokenData.tokens.forEach((bt: any) => {
-                const bRaised = bt.raisedCngn !== undefined ? Number(bt.raisedCngn) : (bt.metrics?.raisedCngn !== undefined ? Number(bt.metrics.raisedCngn) : 0);
-                const bMigrated = bt.migrated !== undefined ? Boolean(bt.migrated) : (bt.metrics?.migrated !== undefined ? Boolean(bt.metrics.migrated) : false);
-
-                if (bt.address && !existingAddrs.has(bt.address.toLowerCase())) {
-                  brandNewTokens.push({
-                    address: bt.address,
-                    curve_address: bt.curve_address || bt.address,
-                    name: bt.name,
-                    symbol: bt.symbol,
-                    metadata_uri: bt.metadata_uri || "/jollof.png",
-                    creator_wallet: bt.creator_wallet || "0xUser...1234",
-                    migrated: bMigrated,
-                    raisedCngn: bRaised,
-                    description: bt.description || `${bt.name} ($${bt.symbol}) launched on Kobo Launchpad!`
-                  });
-                }
-              });
-
-              const updatedExisting = prev.map(t => {
-                const bToken = tokenData.tokens.find((bt: any) => bt.address.toLowerCase() === t.address.toLowerCase());
-                if (bToken) {
-                  const bRaised = bToken.raisedCngn !== undefined
-                    ? Number(bToken.raisedCngn)
-                    : (bToken.metrics?.raisedCngn !== undefined ? Number(bToken.metrics.raisedCngn) : t.raisedCngn ?? 0);
-                  const bMigrated = bToken.migrated !== undefined
-                    ? Boolean(bToken.migrated)
-                    : (bToken.metrics?.migrated !== undefined ? Boolean(bToken.metrics.migrated) : t.migrated ?? false);
-
-                  return {
-                    ...t,
-                    // CRITICAL: Never let a cold-start backend overwrite a higher local raisedCngn.
-                    // Local state tracks every trade. Backend is stateless and can return 0 on cold starts.
-                    // Only accept backend value if it's HIGHER (means another device traded more).
-                    raisedCngn: Math.max(t.raisedCngn ?? 0, bRaised),
-                    // migrated is a one-way door: once true it can never revert to false.
-                    migrated: (t.migrated ?? false) || bMigrated
-                  };
-                }
-                return t;
-              });
-
-              const merged = [...brandNewTokens, ...updatedExisting];
-              localStorage.setItem('kobo_tokens', JSON.stringify(merged));
-              return merged;
+        // Supabase Client Fallback query directly from Database
+        try {
+          const supabase = createSupabaseClient();
+          const { data: dbTokens } = await supabase.from('tokens').select('*').order('created_at', { ascending: false });
+          if (dbTokens && Array.isArray(dbTokens)) {
+            const existingAddrs = new Set(fetchedTokens.map((t: any) => (t.address || '').toLowerCase()));
+            dbTokens.forEach((dbt: any) => {
+              if (dbt.address && !existingAddrs.has(dbt.address.toLowerCase())) {
+                fetchedTokens.push({
+                  address: dbt.address,
+                  curve_address: dbt.curve_address || dbt.address,
+                  name: dbt.name,
+                  symbol: dbt.symbol,
+                  metadata_uri: dbt.metadata_uri || "/jollof.png",
+                  creator_wallet: dbt.creator_wallet || "0xUser...1234",
+                  migrated: Boolean(dbt.migrated),
+                  raisedCngn: Number(dbt.raised_cngn || 0),
+                  description: dbt.description || `${dbt.name} ($${dbt.symbol}) launched on Kobo Launchpad!`
+                });
+              }
             });
           }
+        } catch (sbErr) {
+          // Non-blocking fallback
+        }
+
+        if (fetchedTokens.length > 0) {
+          setTokens(prev => {
+            const existingAddrs = new Set(prev.map(t => t.address.toLowerCase()));
+            const brandNewTokens: TokenItem[] = [];
+
+            fetchedTokens.forEach((bt: any) => {
+              const bRaised = bt.raisedCngn !== undefined ? Number(bt.raisedCngn) : (bt.metrics?.raisedCngn !== undefined ? Number(bt.metrics.raisedCngn) : 0);
+              const bMigrated = bt.migrated !== undefined ? Boolean(bt.migrated) : (bt.metrics?.migrated !== undefined ? Boolean(bt.metrics.migrated) : false);
+
+              if (bt.address && !existingAddrs.has(bt.address.toLowerCase())) {
+                brandNewTokens.push({
+                  address: bt.address,
+                  curve_address: bt.curve_address || bt.address,
+                  name: bt.name,
+                  symbol: bt.symbol,
+                  metadata_uri: bt.metadata_uri || "/jollof.png",
+                  creator_wallet: bt.creator_wallet || "0xUser...1234",
+                  migrated: bMigrated,
+                  raisedCngn: bRaised,
+                  description: bt.description || `${bt.name} ($${bt.symbol}) launched on Kobo Launchpad!`
+                });
+              }
+            });
+
+            const updatedExisting = prev.map(t => {
+              const bToken = fetchedTokens.find((bt: any) => (bt.address || '').toLowerCase() === t.address.toLowerCase());
+              if (bToken) {
+                const bRaised = bToken.raisedCngn !== undefined
+                  ? Number(bToken.raisedCngn)
+                  : (bToken.metrics?.raisedCngn !== undefined ? Number(bToken.metrics.raisedCngn) : t.raisedCngn ?? 0);
+                const bMigrated = bToken.migrated !== undefined
+                  ? Boolean(bToken.migrated)
+                  : (bToken.metrics?.migrated !== undefined ? Boolean(bToken.metrics.migrated) : t.migrated ?? false);
+
+                return {
+                  ...t,
+                  raisedCngn: Math.max(t.raisedCngn ?? 0, bRaised),
+                  migrated: (t.migrated ?? false) || bMigrated
+                };
+              }
+              return t;
+            });
+
+            const merged = [...brandNewTokens, ...updatedExisting];
+            localStorage.setItem('kobo_tokens', JSON.stringify(merged));
+            return merged;
+          });
         }
 
         // 2. Fetch Trades history from backend
