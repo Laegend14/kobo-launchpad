@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setTradesMap(prev => {
           const existing = prev[addr] || [];
-          // Deduplicate by tx_hash
+          // Deduplicate by tx_hash — never add the same trade twice
           if (existing.some(t => t.tx_hash === trade.tx_hash)) return prev;
           const next = { ...prev, [addr]: [trade, ...existing] };
           localStorage.setItem('kobo_trades', JSON.stringify(next));
@@ -110,11 +110,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
         setTokens(prev => {
-          const next = prev.map(t =>
-            t.address.toLowerCase() === addr
-              ? { ...t, raisedCngn: updatedToken.raisedCngn, migrated: updatedToken.migrated }
-              : t
-          );
+          const next = prev.map(t => {
+            if (t.address.toLowerCase() !== addr) return t;
+
+            const localRaised = t.raisedCngn ?? 0;
+            const broadcastRaised = updatedToken.raisedCngn ?? localRaised;
+
+            // For buys: raisedCngn only increases — use Math.max to guard against
+            // out-of-order or stale broadcasts overwriting a higher correct value.
+            // For sells: raisedCngn decreases — trust the broadcaster's exact value
+            // (they computed it from the actual sell amount).
+            const safeRaisedCngn = trade.side === 'buy'
+              ? Math.max(localRaised, broadcastRaised)
+              : broadcastRaised;
+
+            return {
+              ...t,
+              raisedCngn: safeRaisedCngn,
+              // migrated is a one-way door: once graduated it never reverts
+              migrated: (t.migrated ?? false) || (updatedToken.migrated ?? false)
+            };
+          });
           localStorage.setItem('kobo_tokens', JSON.stringify(next));
           return next;
         });
@@ -229,12 +245,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const updatedExisting = prev.map(t => {
                 const bToken = tokenData.tokens.find((bt: any) => bt.address.toLowerCase() === t.address.toLowerCase());
                 if (bToken) {
-                  const bRaised = bToken.raisedCngn !== undefined ? Number(bToken.raisedCngn) : (bToken.metrics?.raisedCngn !== undefined ? Number(bToken.metrics.raisedCngn) : t.raisedCngn);
-                  const bMigrated = bToken.migrated !== undefined ? Boolean(bToken.migrated) : (bToken.metrics?.migrated !== undefined ? Boolean(bToken.metrics.migrated) : t.migrated);
+                  const bRaised = bToken.raisedCngn !== undefined
+                    ? Number(bToken.raisedCngn)
+                    : (bToken.metrics?.raisedCngn !== undefined ? Number(bToken.metrics.raisedCngn) : t.raisedCngn ?? 0);
+                  const bMigrated = bToken.migrated !== undefined
+                    ? Boolean(bToken.migrated)
+                    : (bToken.metrics?.migrated !== undefined ? Boolean(bToken.metrics.migrated) : t.migrated ?? false);
+
                   return {
                     ...t,
-                    raisedCngn: bRaised,
-                    migrated: bMigrated
+                    // CRITICAL: Never let a cold-start backend overwrite a higher local raisedCngn.
+                    // Local state tracks every trade. Backend is stateless and can return 0 on cold starts.
+                    // Only accept backend value if it's HIGHER (means another device traded more).
+                    raisedCngn: Math.max(t.raisedCngn ?? 0, bRaised),
+                    // migrated is a one-way door: once true it can never revert to false.
+                    migrated: (t.migrated ?? false) || bMigrated
                   };
                 }
                 return t;
@@ -274,12 +299,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const merged = { ...prev };
               let changed = false;
               for (const [addr, trades] of Object.entries(newMap)) {
-                const existingTxHashes = new Set((merged[addr] || []).map(t => t.tx_hash).filter(h => h && h !== '0x...'));
-                const existingIds = new Set((merged[addr] || []).map(t => String(t.id)));
+                // Build dedup sets from existing local trades
+                const existingTxHashes = new Set(
+                  (merged[addr] || []).map(t => t.tx_hash).filter(h => h && h !== '0x...')
+                );
+                // Normalise IDs: strip the backend integer prefix if local IDs use timestamp format
+                const existingTxHashSet = existingTxHashes;
 
                 const toAdd = trades.filter(t => {
-                  if (t.tx_hash && t.tx_hash !== '0x...' && existingTxHashes.has(t.tx_hash)) return false;
-                  if (existingIds.has(String(t.id))) return false;
+                  // Primary dedup: by tx_hash (reliable — we write it on trade and send to backend)
+                  if (t.tx_hash && t.tx_hash !== '0x...' && existingTxHashSet.has(t.tx_hash)) return false;
                   return true;
                 });
 
