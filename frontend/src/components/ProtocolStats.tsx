@@ -196,18 +196,7 @@ export default function ProtocolStats() {
     },
   ];
 
-  // Show skeleton only briefly on first load (tokens array not yet populated from localStorage)
-  if (tokens.length === 0 && stats.totalTrades === 0) {
-    return (
-      <div className="glass-card rounded-2xl border border-white/10 p-4 animate-pulse">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-12 bg-white/5 rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Render stat cards cleanly even when starting from 0 tokens
 
   return (
     <div ref={ref} className="glass-card rounded-2xl border border-white/10 p-4 sm:p-5 relative overflow-hidden">
