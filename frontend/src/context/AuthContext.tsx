@@ -2,8 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { TradeItem, DetailedMetrics, deriveTokenMetrics, quoteBuy, quoteSell, INITIAL_VIRTUAL_CNGN, INITIAL_VIRTUAL_TOKENS, MIGRATION_TARGET_CNGN } from '@/lib/metrics';
-import { createClient as createSupabaseClient } from '@/utils/supabase/client';
-import { mintCngnOnChain, buyTokenOnChain, sellTokenOnChain, getAllTokensFromChain, getTradingHistoryFromChain, refreshTokenReserves } from '@/lib/onchain';
+import { mintCngnOnChain, buyTokenOnChain, sellTokenOnChain, refreshTokenReserves } from '@/lib/onchain';
 
 export interface TokenItem {
   address: string;
@@ -68,6 +67,37 @@ function getBackendUrl(): string {
   return 'http://localhost:4000';
 }
 
+/** Map a backend IndexedTrade (string amounts) to the frontend TradeItem (numbers). */
+function mapBackendTrade(tr: any, tokenAddress: string): TradeItem {
+  return {
+    id: tr.tx_hash || tr.id,
+    token_address: tokenAddress.toLowerCase(),
+    trader_wallet: (tr.trader_wallet || '').toLowerCase(),
+    side: tr.side === 'sell' ? 'sell' : 'buy',
+    cngn_amount: Number(tr.cngn_amount),
+    token_amount: Number(tr.token_amount),
+    price: Number(tr.price),
+    timestamp: Number(tr.timestamp) || Date.now(),
+    tx_hash: tr.tx_hash || String(tr.id || ''),
+  };
+}
+
+/** Map a backend token record (already enriched with metrics) to a frontend TokenItem. */
+function mapBackendToken(t: any): TokenItem {
+  const metrics = t.metrics || {};
+  return {
+    address: t.address.toLowerCase(),
+    curve_address: (t.curve_address || '').toLowerCase(),
+    name: t.name || '',
+    symbol: t.symbol || '',
+    metadata_uri: t.metadata_uri || '/jollof.png',
+    creator_wallet: (t.creator_wallet || '').toLowerCase(),
+    migrated: Boolean(t.migrated ?? metrics.migrated ?? false),
+    raisedCngn: Number(t.raisedCngn ?? metrics.raisedCngn ?? 0),
+    description: t.description || `${t.name || ''} ($${t.symbol || ''}) — launched on Kobo!`,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [nairaBalance, setNairaBalance] = useState<number>(500000);
@@ -86,12 +116,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // BroadcastChannel is a same-browser INSTANT HINT only. It never writes optimistic
   // token/trade values (those diverge across accounts). Instead a hint just triggers an
-  // immediate authoritative refetch from the chain, so other tabs update within a beat
-  // rather than waiting for the next poll. Cross-browser / cross-device users converge
-  // via the 15s chain poll regardless.
+  // immediate authoritative refetch from the backend indexer, so other tabs update
+  // within a beat rather than waiting for the next poll. Cross-browser / cross-device
+  // users converge via the 15s poll regardless.
   const broadcastRef = useRef<BroadcastChannel | null>(null);
   // Lets the instant-hint channels (BroadcastChannel / SSE) trigger an authoritative
-  // chain refetch. Assigned by the chain-sync effect below.
+  // refetch. Assigned by the backend-sync effect below.
   const chainSyncRef = useRef<{ run: () => void } | null>(null);
 
   useEffect(() => {
@@ -102,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     channel.onmessage = (event: MessageEvent) => {
       const { type } = event.data || {};
-      // Any launch/trade hint from another tab → pull fresh authoritative chain state.
+      // Any launch/trade hint from another tab → pull fresh authoritative backend state.
       if (type === 'TRADE' || type === 'LAUNCH') {
         chainSyncRef.current?.run();
       }
@@ -112,9 +142,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Server-Sent Events (SSE) — same pattern as BroadcastChannel: an INSTANT HINT only.
-  // When another backend-connected client reports a trade/launch we do NOT apply their
-  // optimistic values (per-instance state is what breaks cross-account sync). We just
-  // trigger an authoritative chain refetch so everyone converges on the same truth.
+  // When the backend indexer reports a trade/launch we do NOT apply its optimistic
+  // values (per-instance state is what breaks cross-account sync). We just trigger an
+  // authoritative backend refetch so everyone converges on the same truth.
   useEffect(() => {
     if (typeof window === 'undefined' || !('EventSource' in window)) return;
 
@@ -149,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTradesMap({});
         setUserHoldings({});
 
-        // Trigger backend & Supabase purge
+        // Trigger backend metadata purge (chain state re-indexes automatically)
         const backendUrl = getBackendUrl();
         fetch(`${backendUrl}/api/reset`, { method: 'POST' }).catch(() => {});
         return;
@@ -198,17 +228,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('storage', syncState);
   }, []);
 
-  // Blockchain-first global sync — the Arc chain is the SINGLE source of truth.
+  // Backend-indexer-first global sync — the Arc chain is the SINGLE source of truth,
+  // and the backend indexer is the single shared reader of it. This is the permanent
+  // fix for cross-account divergence: one process reads the chain once (via the
+  // factory's state registry, not per-browser log scans) and serves EVERY client an
+  // identical token + trade view. Optimistic local state is only a UX flash; the next
+  // poll (or SSE hint) is authoritative.
   //
-  // Tokens come from TokenFactory.TokenLaunched events; per-token reserves (which
-  // drive raisedCngn / price / migration) come from each BondingCurve's live state;
-  // trade history comes from BondingCurve.Trade events. Every user, on every device
-  // and browser, reads the exact same chain state — which is precisely what fixes the
-  // "my coin / my trade doesn't show up for other people" bug. Supabase is used ONLY
-  // to enrich with off-chain metadata (description + image) that isn't cheap to store
-  // on-chain. We do NOT merge in localStorage optimistic values, backend in-memory
-  // trades, or phantom local-only tokens here — those are per-instance and were the
-  // source of cross-account divergence.
+  // We do NOT merge localStorage optimistic values, phantom local-only tokens, or
+  // per-browser chain scans here — those were the source of the "my coin doesn't
+  // show up for other people" bug.
   useEffect(() => {
     let isMounted = true;
     let inFlight = false;
@@ -217,91 +246,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (inFlight) return; // coalesce overlapping polls / broadcast-triggered refreshes
       inFlight = true;
       try {
-        // ── STEP 1: authoritative token list from TokenFactory.TokenLaunched events ──
-        const chainTokens = await getAllTokensFromChain();
+        const backendUrl = getBackendUrl();
+
+        // ── STEP 1: canonical token list from the backend indexer (chain-backed) ──
+        const tokensRes = await fetch(`${backendUrl}/api/tokens`);
+        if (!tokensRes.ok) throw new Error(`Backend tokens fetch failed: ${tokensRes.status}`);
+        const { tokens: backendTokens } = await tokensRes.json();
         if (!isMounted) return;
 
-        if (chainTokens.length > 0) {
-          // ── STEP 2: enrich with Supabase off-chain metadata (image + description) ──
-          const offChainMeta: Record<string, { description?: string; metadata_uri?: string }> = {};
-          try {
-            const supabase = createSupabaseClient();
-            const { data: dbTokens } = await supabase
-              .from('tokens')
-              .select('address, description, metadata_uri')
-              .in('address', chainTokens.map(t => t.address.toLowerCase()));
-            if (dbTokens) {
-              dbTokens.forEach((row: any) => {
-                offChainMeta[row.address.toLowerCase()] = {
-                  description: row.description,
-                  metadata_uri: row.metadata_uri
-                };
-              });
-            }
-          } catch {
-            // Non-blocking: Supabase enrichment is optional
-          }
-          if (!isMounted) return;
+        // The indexer is authoritative: if it returns tokens, we use them. No
+        // `if (list.length > 0)` guard — the backend list is never empty-when-tokens-
+        // exist because the indexer already read them from the chain.
+        const merged: TokenItem[] = (backendTokens || []).map(mapBackendToken);
+        setTokens(merged);
+        localStorage.setItem('kobo_tokens', JSON.stringify(merged));
 
-          // ── STEP 3: chain is authoritative. Build the token list purely from chain
-          //            state; only the description/image are taken off-chain. No
-          //            Math.max, no local-only preservation — the chain decides. ──
-          const merged: TokenItem[] = chainTokens.map(ct => {
-            const addrLower = ct.address.toLowerCase();
-            const meta = offChainMeta[addrLower] || {};
-            return {
-              address: ct.address,
-              curve_address: ct.curve_address,
-              name: ct.name,
-              symbol: ct.symbol,
-              metadata_uri: meta.metadata_uri || ct.metadata_uri || '/jollof.png',
-              creator_wallet: ct.creator_wallet,
-              raisedCngn: ct.raisedCngn,        // live realCngnReserve from the curve
-              migrated: ct.migrated,            // live migrated() flag from the curve
-              description: meta.description || `${ct.name} ($${ct.symbol}) — launched on Kobo!`
-            };
-          });
-          setTokens(merged);
-          localStorage.setItem('kobo_tokens', JSON.stringify(merged));
-
-          // ── STEP 4: authoritative trade history from BondingCurve.Trade events ──
-          // Fetch per-token Trade logs in parallel (bounded concurrency). This is the
-          // same for every viewer, so a trade made on any account is visible to all.
-          const CONCURRENCY = 4;
-          const tradeMapNext: Record<string, TradeItem[]> = {};
-          for (let i = 0; i < chainTokens.length; i += CONCURRENCY) {
-            const batch = chainTokens.slice(i, i + CONCURRENCY);
-            const batchResults = await Promise.all(
-              batch.map(async ct => {
-                const addrLower = ct.address.toLowerCase();
-                try {
-                  const chainTrades = await getTradingHistoryFromChain(ct.address, ct.curve_address);
-                  const items: TradeItem[] = chainTrades.map(tr => ({
-                    id: tr.tx_hash,
-                    token_address: ct.address,
-                    trader_wallet: tr.trader_wallet,
-                    side: tr.side,
-                    cngn_amount: tr.cngn_amount,
-                    token_amount: tr.token_amount,
-                    price: tr.price,
-                    timestamp: tr.timestamp,
-                    tx_hash: tr.tx_hash
-                  }));
-                  return [addrLower, items] as const;
-                } catch {
-                  return [addrLower, [] as TradeItem[]] as const;
-                }
-              })
-            );
-            if (!isMounted) return;
-            batchResults.forEach(([addr, items]) => { tradeMapNext[addr] = items; });
-          }
+        // ── STEP 2: authoritative per-token trade history from the indexer ──
+        const CONCURRENCY = 4;
+        const tradeMapNext: Record<string, TradeItem[]> = {};
+        for (let i = 0; i < merged.length; i += CONCURRENCY) {
+          const batch = merged.slice(i, i + CONCURRENCY);
+          const batchResults = await Promise.all(
+            batch.map(async tk => {
+              const addrLower = tk.address.toLowerCase();
+              try {
+                const tradesRes = await fetch(`${backendUrl}/api/tokens/${addrLower}/trades`);
+                if (!tradesRes.ok) throw new Error(`Trades fetch failed: ${tradesRes.status}`);
+                const { trades: backendTrades } = await tradesRes.json();
+                const items: TradeItem[] = (backendTrades || []).map((tr: any) => mapBackendTrade(tr, addrLower));
+                return [addrLower, items] as const;
+              } catch {
+                return [addrLower, [] as TradeItem[]] as const;
+              }
+            })
+          );
           if (!isMounted) return;
-          setTradesMap(tradeMapNext);
-          localStorage.setItem('kobo_trades', JSON.stringify(tradeMapNext));
+          batchResults.forEach(([addr, items]) => { tradeMapNext[addr] = items; });
         }
+        if (!isMounted) return;
+        setTradesMap(tradeMapNext);
+        localStorage.setItem('kobo_trades', JSON.stringify(tradeMapNext));
       } catch (e) {
-        console.warn('[Kobo] Global chain sync notice:', e);
+        console.warn('[Kobo] Global backend sync notice:', e);
       } finally {
         inFlight = false;
       }
@@ -443,8 +429,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     txHash?: string
   ): TokenItem => {
     // A token only exists if it was actually deployed on-chain. Without the real
-    // TokenFactory addresses there is nothing for other users to discover via
-    // TokenLaunched events — so we refuse to fabricate a phantom address.
+    // TokenFactory addresses there is nothing for other users to discover via the
+    // backend indexer — so we refuse to fabricate a phantom address.
     if (!customAddress || !customCurve) {
       throw new Error("Token launch requires a confirmed on-chain deployment. No wallet transaction was completed.");
     }
@@ -458,7 +444,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       symbol: symbol.toUpperCase(),
       metadata_uri: imageUrl || "/jollof.png",
       // Store the FULL creator address so it matches the on-chain event's creator
-      // field once the chain sync overwrites this optimistic entry.
+      // field once the backend indexer overwrites this optimistic entry.
       creator_wallet: walletAddress || tokenAddr,
       migrated: false,
       raisedCngn: 0,
@@ -466,7 +452,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Optimistic local insert so the creator sees their token instantly; the 15s
-    // chain sync will replace this with the authoritative on-chain record.
+    // indexer sync will replace this with the authoritative on-chain record.
     setTokens(prev => {
       if (prev.some(t => t.address.toLowerCase() === tokenAddr.toLowerCase())) return prev;
       const next = [newToken, ...prev];
@@ -481,27 +467,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
-    // Instant same-browser hint → other tabs pull fresh chain state.
+    // Instant same-browser hint → other tabs pull fresh backend state.
     broadcastRef.current?.postMessage({ type: 'LAUNCH', payload: { token: newToken } });
 
-    // Off-chain metadata enrichment (image + description) — the token itself is
-    // discovered on-chain, this only supplies what the event can't carry cheaply.
+    // Off-chain metadata (description + image) lives in the backend file store, NOT
+    // on-chain — the launch event only carries name/symbol/creator. Persist it now so
+    // the indexer merges it onto every client's token record.
     try {
-      const supabase = createSupabaseClient();
-      supabase.from('tokens').upsert({
-        address: tokenAddr.toLowerCase(),
-        curve_address: curveAddr.toLowerCase(),
-        name,
-        symbol: symbol.toUpperCase(),
-        metadata_uri: imageUrl || "/jollof.png",
-        creator_wallet: newToken.creator_wallet,
-        migrated: false,
-        raised_cngn: 0,
-        description,
-        created_at: new Date().toISOString()
-      }, { onConflict: 'address' }).then();
+      const backendUrl = getBackendUrl();
+      fetch(`${backendUrl}/api/metadata`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: tokenAddr.toLowerCase(),
+          curve_address: curveAddr.toLowerCase(),
+          name,
+          symbol: symbol.toUpperCase(),
+          description,
+          image: imageUrl || '/jollof.png',
+          creator_wallet: newToken.creator_wallet
+        })
+      }).catch(err => {
+        console.warn("Metadata file-store write notice:", err);
+      });
     } catch (e) {
-      console.warn("Supabase launch token direct write notice:", e);
+      console.warn("Metadata file-store write notice:", e);
     }
 
     return newToken;
@@ -513,7 +503,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const raised = token?.raisedCngn || 0;
 
     // A trade must be a real on-chain swap — otherwise it is invisible to every
-    // other user (the chain sync is the single source of truth). Refuse to
+    // other user (the backend indexer is the single source of truth). Refuse to
     // fabricate an off-chain "simulated" fill.
     if (typeof window === 'undefined' || !(window as any).ethereum) {
       throw new Error("No Web3 wallet detected. Connect a wallet on Arc Testnet to trade.");
@@ -595,29 +585,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Off-chain enrichment mirror only — the trade is authoritative on-chain via
-    // the Trade event; this row just speeds up the UI before the next sync.
-    try {
-      const supabase = createSupabaseClient();
-      supabase.from('trades').upsert({
-        token_address: tokenAddress.toLowerCase(),
-        trader_wallet: walletAddress,
-        side: 'buy',
-        cngn_amount: cngnAmount,
-        token_amount: Math.round(finalTokensOut),
-        price: executionPrice,
-        tx_hash: newTrade.tx_hash,
-        created_at: new Date().toISOString()
-      }, { onConflict: 'tx_hash' }).then();
-
-      supabase.from('tokens').update({
-        raised_cngn: newRaised,
-        migrated: isMigrated
-      }).eq('address', addrLower).then();
-    } catch (e) {
-      console.warn("Supabase buy trade direct write notice:", e);
-    }
-
     // Reconcile raisedCngn/migrated from authoritative on-chain reserves.
     if (realTxHash && token?.curve_address) {
       refreshTokenReserves(token.curve_address).then(reserves => {
@@ -633,6 +600,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }).catch(() => {});
     }
 
+    // Trigger an immediate authoritative backend refetch so the trade shows for
+    // everyone the moment the indexer picks it up (falls back to next 15s poll).
+    chainSyncRef.current?.run();
+
     return { tokensOut: finalTokensOut, priceImpact: priceImpactPercent, txHash: newTrade.tx_hash };
   };
 
@@ -642,7 +613,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const raised = token?.raisedCngn || 0;
 
     // Sells must settle on-chain too — a simulated sell would desync this account
-    // from the shared chain state that every other user reads.
+    // from the shared backend state that every other user reads.
     if (typeof window === 'undefined' || !(window as any).ethereum) {
       throw new Error("No Web3 wallet detected. Connect a wallet on Arc Testnet to trade.");
     }
@@ -721,27 +692,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Off-chain enrichment mirror only — authoritative record is the Trade event.
-    try {
-      const supabase = createSupabaseClient();
-      supabase.from('trades').upsert({
-        token_address: tokenAddress.toLowerCase(),
-        trader_wallet: walletAddress,
-        side: 'sell',
-        cngn_amount: Number(finalCngnOut.toFixed(2)),
-        token_amount: tokenAmount,
-        price: executionPrice,
-        tx_hash: newTrade.tx_hash,
-        created_at: new Date().toISOString()
-      }, { onConflict: 'tx_hash' }).then();
-
-      supabase.from('tokens').update({
-        raised_cngn: newRaised
-      }).eq('address', addrLower).then();
-    } catch (e) {
-      console.warn("Supabase sell trade direct write notice:", e);
-    }
-
     // Reconcile raisedCngn/migrated from authoritative on-chain reserves.
     if (realTxHash && token?.curve_address) {
       refreshTokenReserves(token.curve_address).then(reserves => {
@@ -756,6 +706,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
       }).catch(() => {});
     }
+
+    // Trigger an immediate authoritative backend refetch so the sell shows for
+    // everyone the moment the indexer picks it up (falls back to next 15s poll).
+    chainSyncRef.current?.run();
 
     return { cngnOut: finalCngnOut, priceImpact: priceImpactPercent, txHash: newTrade.tx_hash };
   };
@@ -830,4 +784,3 @@ export function useAuth() {
   }
   return context;
 }
-

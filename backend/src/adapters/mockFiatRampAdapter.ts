@@ -1,12 +1,34 @@
 import { FiatRampAdapter, DepositInstructions, WithdrawalReceipt } from './fiatRamp.interface';
-import { inMemStore, DepositRecord, WithdrawalRecord } from '../db';
 import { ethers } from 'ethers';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
+// The fiat ramp is a simulator — deposits/withdrawals are ephemeral by design and
+// never a source of truth (real value lives on-chain in cNGN). These local in-memory
+// arrays replace the old shared db store so the adapter is fully self-contained.
+interface DepositRecord {
+  id: string;
+  user_wallet: string;
+  amount_naira: number;
+  status: 'pending' | 'completed' | 'failed';
+  tx_hash?: string;
+  created_at: string;
+}
+
+interface WithdrawalRecord {
+  id: string;
+  user_wallet: string;
+  amount_naira: number;
+  status: 'pending' | 'completed' | 'failed';
+  bank_reference?: string;
+  created_at: string;
+}
+
 export class MockFiatRampAdapter implements FiatRampAdapter {
   private userBalances: Record<string, number> = {};
+  private deposits: DepositRecord[] = [];
+  private withdrawals: WithdrawalRecord[] = [];
 
   async requestDeposit(userWallet: string, amountNaira: number): Promise<DepositInstructions> {
     const depositId = `dep_${Math.random().toString(36).substring(2, 11)}`;
@@ -19,7 +41,7 @@ export class MockFiatRampAdapter implements FiatRampAdapter {
       status: 'pending',
       created_at: new Date().toISOString()
     };
-    inMemStore.deposits.push(record);
+    this.deposits.push(record);
 
     return {
       depositId,
@@ -32,7 +54,7 @@ export class MockFiatRampAdapter implements FiatRampAdapter {
   }
 
   async confirmDeposit(depositId: string): Promise<{ txHash: string }> {
-    const deposit = inMemStore.deposits.find(d => d.id === depositId);
+    const deposit = this.deposits.find(d => d.id === depositId);
     if (!deposit) {
       throw new Error(`Deposit ${depositId} not found`);
     }
@@ -83,7 +105,7 @@ export class MockFiatRampAdapter implements FiatRampAdapter {
       bank_reference: bankRef,
       created_at: new Date().toISOString()
     };
-    inMemStore.withdrawals.push(record);
+    this.withdrawals.push(record);
 
     return {
       withdrawalId,

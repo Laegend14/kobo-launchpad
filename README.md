@@ -43,12 +43,35 @@ kobo-launchpad/
 ├── contracts/       # Hardhat TypeScript Smart Contracts & Unit Tests
 │   ├── src/         # BondingCurve.sol, TokenFactory.sol, MigrationRouter.sol
 │   └── test/        # Bonding curve & DEX migration integration tests
-├── backend/         # Node.js Express REST API & Fiat Ramp Adapter
-│   └── src/         # Token indexer, fiat deposit/withdrawal endpoints
+├── backend/         # Node.js Express API + continuous on-chain indexer
+│   └── src/         # indexer.ts (shared read layer), server.ts, fiat ramp adapter
 └── frontend/        # Next.js 14 App Router, Tailwind CSS & Real-Time Metrics
     ├── public/      # Brand assets & favicons
     └── src/         # Components, Pages & Metrics Math Engine
 ```
+
+---
+
+## 🔄 State Synchronization (Why every account sees the same tokens & trades)
+
+KOBO has **no application database** — the blockchain is the single source of truth. A
+lightweight backend **indexer** (`backend/src/indexer.ts`) is the one shared read layer:
+
+- It reads the **factory's on-chain registry** (`getAllTokensCount → allTokens(i) → tokenToCurve`)
+  and each curve's live reserves via **paced, retried `eth_call` state reads** — never
+  per-browser `queryFilter(0,"latest")` log scans (those fail at high block heights and
+  caused tokens created on one account to be invisible on others).
+- Trade history is ingested incrementally from `Trade` events using a **capped, cursor-based
+  batch scan** (never from block 0), then de-duplicated by a composite key.
+- The Express API serves the canonical list at `GET /api/tokens`, `GET /api/tokens/:address`,
+  and `GET /api/tokens/:address/trades`. All clients read from here, so **metrics are
+  identical for every user**.
+- **Liquidity metrics** (market cap, price, raised cNGN, bonding-curve progress) are derived
+  identically from live on-chain curve state + indexed trades — the same math on every account.
+- **Server-Sent Events (SSE)** push instant *hints* that trigger an authoritative refetch;
+  a 15s poll is the convergence floor. Hints never write optimistic cross-account values.
+- Token metadata (name, description, image) lives in a backend file store
+  (`backend/data/metadata/<address>.json`) — no external database or service.
 
 ---
 
