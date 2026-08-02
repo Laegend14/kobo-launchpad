@@ -153,7 +153,7 @@ export default function DepositModal({ isOpen, onClose, onOpenSwap }: DepositMod
                 className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-sm flex items-center justify-center space-x-2 shadow-lg shadow-emerald-500/20 transition-all"
               >
                 <ArrowDownUp className="w-4 h-4" />
-                <span>Swap Naira ₦ to cNGN Now</span>
+                <span>Buy cNGN with Naira ₦ Now</span>
               </button>
 
               <button

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { TradeItem, DetailedMetrics, deriveTokenMetrics, quoteBuy, quoteSell } from '@/lib/metrics';
 import { createClient as createSupabaseClient } from '@/utils/supabase/client';
+import { mintCngnOnChain, buyTokenOnChain, sellTokenOnChain } from '@/lib/onchain';
 
 export interface TokenItem {
   address: string;
@@ -504,6 +505,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('kobo_balance', next.toString());
       return next;
     });
+
+    // Execute real on-chain ERC20 cNGN minting on Arc Testnet if wallet is connected
+    if (walletAddress) {
+      mintCngnOnChain(walletAddress, amount).catch(err => {
+        console.warn("[cNGN On-Chain Mint Notice]:", err);
+      });
+    }
+
     return true;
   };
 

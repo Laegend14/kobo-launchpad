@@ -139,10 +139,10 @@ export default function Navbar() {
                     <button
                       onClick={() => setIsSwapOpen(true)}
                       className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-bold transition-all flex items-center space-x-1"
-                      title="Swap Naira ₦ ↔ cNGN"
+                      title="Buy cNGN with Naira or Sell cNGN for Naira"
                     >
                       <ArrowDownUp className="w-3.5 h-3.5" />
-                      <span>Swap 🔄</span>
+                      <span>Buy/Sell cNGN 🔄</span>
                     </button>
 
                     <button

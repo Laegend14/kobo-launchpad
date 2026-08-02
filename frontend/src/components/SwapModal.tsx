@@ -74,7 +74,7 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
             <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-[#00E676]">
               <ArrowDownUp className="w-4 h-4" />
             </div>
-            <h3 className="font-bold text-lg sm:text-xl text-white">Swap NGN ↔ cNGN</h3>
+            <h3 className="font-bold text-lg sm:text-xl text-white">Buy &amp; Sell cNGN Stablecoin</h3>
           </div>
 
           <button
@@ -87,7 +87,7 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
         </div>
 
         <p className="text-xs text-slate-400 font-inter leading-relaxed">
-          Instant 1:1 zero-fee conversion between Naira (NGN ₦) &amp; cNGN Stablecoin.
+          cNGN is Nigeria's 1:1 Naira-pegged ERC20 stablecoin on Arc Testnet. Buy cNGN with Naira ₦ or sell cNGN back for Naira ₦ at a 1:1 guaranteed rate.
         </p>
 
         {/* Direction Indicator Pill */}
@@ -101,7 +101,7 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            Naira ₦ ➔ cNGN
+            Buy cNGN (with Naira ₦)
           </button>
           <button
             type="button"
@@ -112,7 +112,7 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            cNGN ➔ Naira ₦
+            Sell cNGN (for Naira ₦)
           </button>
         </div>
 
@@ -162,7 +162,7 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
               type="button"
               onClick={toggleDirection}
               className="p-2 rounded-full bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:border-emerald-500/50 transition-all"
-              title="Reverse Swap Direction"
+              title="Reverse Direction"
             >
               <ArrowDownUp className="w-4 h-4 text-emerald-400" />
             </button>
@@ -205,7 +205,7 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
             {isSwapping ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Executing Swap...</span>
+                <span>Processing cNGN Transaction...</span>
               </>
             ) : isInsufficient ? (
               <span>Insufficient {direction === 'ngnToCngn' ? 'Naira ₦' : 'cNGN'} Balance</span>
@@ -213,7 +213,7 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
               <>
                 <Sparkles className="w-4 h-4" />
                 <span>
-                  Swap {direction === 'ngnToCngn' ? 'Naira ₦ ➔ cNGN' : 'cNGN ➔ Naira ₦'}
+                  {direction === 'ngnToCngn' ? 'Buy cNGN with Naira ₦' : 'Sell cNGN for Naira ₦'}
                 </span>
               </>
             )}
