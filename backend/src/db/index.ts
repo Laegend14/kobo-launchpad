@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { createClient as createSupabaseClient, SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -64,6 +65,11 @@ class InMemStore {
 }
 
 export const inMemStore = new InMemStore();
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mnnruqxujmlptzlrjdbq.supabase.co";
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_LCqo1bRQRiTN2t5nlW39KA_B1-aliY1";
+
+export const supabase: SupabaseClient = createSupabaseClient(supabaseUrl, supabaseKey);
 
 const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL || process.env.POSTGRES_URL;
 
@@ -147,6 +153,29 @@ export async function getAllTokensDB(): Promise<TokenRecord[]> {
       created_at: r.created_at
     }));
   }
+
+  // Supabase REST Client fallback
+  try {
+    const { data } = await supabase.from('tokens').select('*').order('created_at', { ascending: false });
+    if (data && Array.isArray(data) && data.length > 0) {
+      return data.map((r: any) => ({
+        address: r.address,
+        curve_address: r.curve_address || r.address,
+        name: r.name,
+        symbol: r.symbol,
+        metadata_uri: r.metadata_uri,
+        creator_wallet: r.creator_wallet,
+        migrated: Boolean(r.migrated),
+        raisedCngn: Number(r.raised_cngn || 0),
+        pair_address: r.pair_address,
+        description: r.description,
+        created_at: r.created_at
+      }));
+    }
+  } catch (err) {
+    // Silently fall back to inMemStore
+  }
+
   return inMemStore.tokens;
 }
 
@@ -194,6 +223,25 @@ export async function saveTokenDB(token: TokenRecord): Promise<TokenRecord> {
       created_at: r.created_at
     };
   }
+
+  // Supabase REST Client upsert
+  try {
+    await supabase.from('tokens').upsert({
+      address: token.address.toLowerCase(),
+      curve_address: token.curve_address.toLowerCase(),
+      name: token.name,
+      symbol: token.symbol,
+      metadata_uri: token.metadata_uri || '/jollof.png',
+      creator_wallet: token.creator_wallet,
+      migrated: token.migrated || false,
+      raised_cngn: token.raisedCngn || 0,
+      description: token.description,
+      created_at: token.created_at || new Date().toISOString()
+    }, { onConflict: 'address' });
+  } catch (err) {
+    // Non-blocking fallback
+  }
+
   return token;
 }
 
@@ -211,6 +259,15 @@ export async function updateTokenReserveDB(address: string, raisedCngn: number, 
       migrated = $2
     WHERE LOWER(address) = $3
   `, [raisedCngn, migrated, addrLower]);
+
+  try {
+    await supabase.from('tokens').update({
+      raised_cngn: raisedCngn,
+      migrated: migrated
+    }).eq('address', addrLower);
+  } catch (err) {
+    // Non-blocking fallback
+  }
 }
 
 // Global Trades Data Access
@@ -229,6 +286,27 @@ export async function getAllTradesDB(): Promise<TradeRecord[]> {
       created_at: r.created_at
     }));
   }
+
+  // Supabase REST Client fallback
+  try {
+    const { data } = await supabase.from('trades').select('*').order('created_at', { ascending: false }).limit(500);
+    if (data && Array.isArray(data) && data.length > 0) {
+      return data.map((r: any) => ({
+        id: Number(r.id),
+        token_address: r.token_address,
+        trader_wallet: r.trader_wallet,
+        side: r.side,
+        cngn_amount: String(r.cngn_amount),
+        token_amount: String(r.token_amount),
+        price: String(r.price),
+        tx_hash: r.tx_hash,
+        created_at: r.created_at
+      }));
+    }
+  } catch (err) {
+    // Silently fall back to inMemStore
+  }
+
   return inMemStore.trades;
 }
 
@@ -268,5 +346,22 @@ export async function saveTradeDB(trade: TradeRecord): Promise<TradeRecord> {
       created_at: r.created_at
     };
   }
+
+  // Supabase REST Client insert
+  try {
+    await supabase.from('trades').upsert({
+      token_address: trade.token_address.toLowerCase(),
+      trader_wallet: trade.trader_wallet,
+      side: trade.side,
+      cngn_amount: trade.cngn_amount,
+      token_amount: trade.token_amount,
+      price: trade.price,
+      tx_hash: trade.tx_hash,
+      created_at: trade.created_at || new Date().toISOString()
+    }, { onConflict: 'tx_hash' });
+  } catch (err) {
+    // Non-blocking fallback
+  }
+
   return trade;
 }
