@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { TradeItem, DetailedMetrics, deriveTokenMetrics, quoteBuy, quoteSell } from '@/lib/metrics';
 
 export interface TokenItem {
@@ -81,6 +81,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     return {};
   });
+
+  // BroadcastChannel for instant cross-tab / cross-account real-time sync (same browser)
+  const broadcastRef = useRef<BroadcastChannel | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+
+    const channel = new BroadcastChannel('kobo_sync');
+    broadcastRef.current = channel;
+
+    channel.onmessage = (event: MessageEvent) => {
+      const { type, payload } = event.data || {};
+      if (!type || !payload) return;
+
+      if (type === 'TRADE') {
+        // Incoming trade from another tab — merge into our tradesMap and tokens
+        const { trade, updatedToken } = payload as { trade: TradeItem; updatedToken: TokenItem };
+        const addr = trade.token_address.toLowerCase();
+
+        setTradesMap(prev => {
+          const existing = prev[addr] || [];
+          // Deduplicate by tx_hash
+          if (existing.some(t => t.tx_hash === trade.tx_hash)) return prev;
+          const next = { ...prev, [addr]: [trade, ...existing] };
+          localStorage.setItem('kobo_trades', JSON.stringify(next));
+          return next;
+        });
+
+        setTokens(prev => {
+          const next = prev.map(t =>
+            t.address.toLowerCase() === addr
+              ? { ...t, raisedCngn: updatedToken.raisedCngn, migrated: updatedToken.migrated }
+              : t
+          );
+          localStorage.setItem('kobo_tokens', JSON.stringify(next));
+          return next;
+        });
+      }
+
+      if (type === 'LAUNCH') {
+        const { token } = payload as { token: TokenItem };
+        setTokens(prev => {
+          if (prev.some(t => t.address.toLowerCase() === token.address.toLowerCase())) return prev;
+          const next = [token, ...prev];
+          localStorage.setItem('kobo_tokens', JSON.stringify(next));
+          return next;
+        });
+      }
+    };
+
+    return () => { channel.close(); broadcastRef.current = null; };
+  }, []);
 
   useEffect(() => {
     const syncState = () => {
@@ -249,7 +301,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     fetchGlobalSync();
-    const interval = setInterval(fetchGlobalSync, 1500);
+    // BroadcastChannel handles instant same-device sync; polling is cross-device fallback
+    const interval = setInterval(fetchGlobalSync, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -390,7 +443,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
-    // Post new token to backend API for instant global cross-account sync
+    // Instant cross-tab broadcast so other accounts see new token immediately
+    broadcastRef.current?.postMessage({ type: 'LAUNCH', payload: { token: newToken } });
+
+    // Post new token to backend API for cross-device sync
     const backendUrl = getBackendUrl();
     fetch(`${backendUrl}/api/tokens`, {
       method: 'POST',
@@ -462,7 +518,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
-    // Post trade to backend API for global cross-account sync
+    // Instant cross-tab broadcast so other accounts see this trade immediately (no refresh needed)
+    broadcastRef.current?.postMessage({
+      type: 'TRADE',
+      payload: {
+        trade: newTrade,
+        updatedToken: { ...token, address: tokenAddress, raisedCngn: newRaised, migrated: isMigrated }
+      }
+    });
+
+    // Post trade to backend API for cross-device sync
     const backendUrl = getBackendUrl();
     fetch(`${backendUrl}/api/trades`, {
       method: 'POST',
@@ -542,7 +607,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
-    // Post trade to backend API for global cross-account sync
+    // Instant cross-tab broadcast so other accounts see this sell trade immediately
+    broadcastRef.current?.postMessage({
+      type: 'TRADE',
+      payload: {
+        trade: newTrade,
+        updatedToken: { ...token, address: tokenAddress, raisedCngn: newRaised }
+      }
+    });
+
+    // Post trade to backend API for cross-device sync
     const backendUrl = getBackendUrl();
     fetch(`${backendUrl}/api/trades`, {
       method: 'POST',
