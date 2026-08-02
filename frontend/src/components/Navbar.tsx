@@ -11,7 +11,8 @@ import {
   LogOut, 
   Building2, 
   ArrowDownUp,
-  SendHorizontal
+  SendHorizontal,
+  Github
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import DepositModal from './DepositModal';
@@ -72,24 +73,42 @@ export default function Navbar() {
             <nav className="hidden md:flex items-center space-x-1 font-grotesk">
               <Link
                 href="/"
-                className="px-4 py-2 rounded-lg text-sm text-slate-200 hover:text-white hover:bg-white/5 transition-colors"
+                className="px-3 py-2 rounded-lg text-sm text-slate-200 hover:text-white hover:bg-white/5 transition-colors"
               >
                 Explore
               </Link>
               <Link
                 href="/create"
-                className="px-4 py-2 rounded-lg text-sm text-[#00E676] hover:bg-emerald-500/10 flex items-center space-x-1.5 transition-colors"
+                className="px-3 py-2 rounded-lg text-sm text-[#00E676] hover:bg-emerald-500/10 flex items-center space-x-1.5 transition-colors"
               >
                 <PlusCircle className="w-4 h-4" />
                 <span>Launch Token</span>
               </Link>
               <Link
                 href="/leaderboard"
-                className="px-4 py-2 rounded-lg text-sm text-slate-200 hover:text-white hover:bg-white/5 flex items-center space-x-1.5 transition-colors"
+                className="px-3 py-2 rounded-lg text-sm text-slate-200 hover:text-white hover:bg-white/5 flex items-center space-x-1.5 transition-colors"
               >
                 <Trophy className="w-4 h-4 text-[#FFD700]" />
                 <span>Leaderboard</span>
               </Link>
+              <a
+                href="https://faucet.circle.com"
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-2 rounded-lg text-sm text-cyan-400 hover:bg-cyan-500/10 flex items-center space-x-1 transition-colors font-bold"
+                title="Claim Arc Testnet USDC Gas Faucet"
+              >
+                <span>Faucet ⛽</span>
+              </a>
+              <a
+                href="https://github.com/Laegend14/kobo-launchpad"
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                title="View Source Code on GitHub"
+              >
+                <Github className="w-4 h-4 text-emerald-400" />
+              </a>
             </nav>
 
             {/* Desktop Right Action Area */}
@@ -207,6 +226,24 @@ export default function Navbar() {
             >
               Leaderboard
             </Link>
+            <a
+              href="https://faucet.circle.com"
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm text-cyan-400 font-bold hover:bg-white/5"
+            >
+              Claim Arc Testnet Faucet (faucet.circle.com) ⛽
+            </a>
+            <a
+              href="https://github.com/Laegend14/kobo-launchpad"
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm text-emerald-400 font-bold hover:bg-white/5"
+            >
+              View GitHub Repo (Laegend14/kobo-launchpad)
+            </a>
 
             <div className="pt-2 border-t border-white/10 space-y-2">
               {isLoggedIn ? (

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Rocket, Sparkles, UploadCloud, Info, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Rocket, Sparkles, UploadCloud, Info, CheckCircle2, RefreshCw, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 import { launchTokenOnChain } from '@/lib/onchain';
@@ -108,14 +108,51 @@ export default function CreateTokenPage() {
         </p>
       </div>
 
+      {/* Circle Arc Faucet Gas Banner */}
+      <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-xs font-inter flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center space-x-3">
+          <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="font-bold text-white text-xs">Need Arc Testnet Gas to Deploy?</h4>
+            <p className="text-[11px] text-slate-300">
+              Claim free USDC gas tokens from Circle's official Arc faucet at <span className="font-mono text-cyan-300 font-bold">faucet.circle.com</span>
+            </p>
+          </div>
+        </div>
+        <a
+          href="https://faucet.circle.com"
+          target="_blank"
+          rel="noreferrer"
+          className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-grotesk font-bold text-xs shrink-0 flex items-center space-x-1.5 shadow-md shadow-cyan-500/20 transition-all"
+        >
+          <span>Claim Arc Faucet</span>
+          <ArrowUpRight className="w-3.5 h-3.5" />
+        </a>
+      </div>
+
       <div className="glass-card rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl space-y-6">
         
         {deployError && (
-          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-inter flex items-start space-x-3">
-            <Info className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
-            <div>
-              <p className="font-bold text-amber-200">Token Launch Aborted</p>
-              <p className="mt-0.5 opacity-90">{deployError}</p>
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-inter space-y-2">
+            <div className="flex items-start space-x-3">
+              <Info className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-200">Token Launch Aborted</p>
+                <p className="mt-0.5 opacity-90">{deployError}</p>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between text-[11px]">
+              <span className="text-amber-200">Out of testnet gas?</span>
+              <a
+                href="https://faucet.circle.com"
+                target="_blank"
+                rel="noreferrer"
+                className="text-cyan-300 underline font-bold hover:text-cyan-200"
+              >
+                Claim Arc Faucet (faucet.circle.com) ➔
+              </a>
             </div>
           </div>
         )}

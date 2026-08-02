@@ -3,6 +3,8 @@ import Navbar from '../components/Navbar';
 import { AuthProvider } from '../context/AuthContext';
 import DynamicProviderWrapper from '../components/DynamicProviderWrapper';
 
+import Footer from '../components/Footer';
+
 export const metadata = {
   title: 'Kobo — Naira-Native Memecoin Launchpad',
   description: 'Create, buy, and sell memecoins priced and settled in cNGN (Nigeria regulated Naira stablecoin) with automated Uniswap liquidity migration.',
@@ -37,9 +39,7 @@ export default function RootLayout({
               {children}
             </main>
 
-            <footer className="border-t border-white/10 py-8 text-center text-xs text-slate-500 font-grotesk">
-              <p>© 2026 Kobo Protocol — Powered by Dynamic Auth SDK on Base Sepolia with cNGN.</p>
-            </footer>
+            <Footer />
           </AuthProvider>
         </DynamicProviderWrapper>
       </body>
