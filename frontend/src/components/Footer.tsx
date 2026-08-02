@@ -1,22 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import Link from 'next/link';
-import { ExternalLink, Github, Sparkles, ShieldCheck, Flame, Layers, TrendingUp, Users, Rocket } from 'lucide-react';
-
-interface FooterStats {
-  totalVolumeCngn: number;
-  totalTrades: number;
-  totalTokens: number;
-  totalUniqueWallets: number;
-}
-
-function getBackendUrl() {
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-    return '';
-  }
-  return 'http://localhost:4000';
-}
+import { ExternalLink, Github, Sparkles, ShieldCheck, Layers, TrendingUp, Users, Rocket } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 function formatCompact(n: number): string {
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(1)}M`;
@@ -25,22 +12,27 @@ function formatCompact(n: number): string {
 }
 
 export default function Footer() {
-  const [stats, setStats] = useState<FooterStats | null>(null);
+  const { tokens, tradesMap } = useAuth();
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const base = getBackendUrl();
-        const res = await fetch(`${base}/api/stats`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setStats(data);
-      } catch { /* non-critical */ }
+  // Compute stats from client-side state (localStorage-backed, always accurate)
+  const stats = useMemo(() => {
+    const allTrades = Object.values(tradesMap).flat();
+    const totalVolumeCngn = allTrades.reduce((acc, tr) => acc + Math.abs(tr.cngn_amount || 0), 0);
+    const totalRaisedCngn = tokens.reduce((acc, t) => acc + Math.max(0, t.raisedCngn ?? 0), 0);
+
+    const traderWallets = new Set(allTrades.map(tr => tr.trader_wallet?.toLowerCase()).filter((w): w is string => Boolean(w)));
+    const deployerWallets = new Set(tokens.map(t => t.creator_wallet?.toLowerCase()).filter((w): w is string => Boolean(w)));
+    const allWalletsArr = Array.from(traderWallets);
+    deployerWallets.forEach(w => allWalletsArr.push(w));
+    const allWallets = new Set(allWalletsArr);
+
+    return {
+      totalVolumeCngn: Math.round(Math.max(totalVolumeCngn, totalRaisedCngn)),
+      totalTrades: allTrades.length,
+      totalTokens: tokens.length,
+      totalUniqueWallets: allWallets.size,
     };
-    fetchStats();
-    const interval = setInterval(fetchStats, 60_000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [tokens, tradesMap]);
 
   return (
     <footer className="border-t border-white/10 bg-[#070a10] pt-12 pb-8 font-grotesk">

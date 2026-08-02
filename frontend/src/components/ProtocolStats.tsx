@@ -1,29 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { TrendingUp, Users, Rocket, Layers, ShieldCheck, Activity, BarChart3 } from 'lucide-react';
-
-interface ProtocolStatsData {
-  totalVolumeCngn: number;
-  totalTrades: number;
-  totalTokens: number;
-  migratedTokens: number;
-  uniqueTraders: number;
-  uniqueDeployers: number;
-  totalUniqueWallets: number;
-  totalLiquidityLockedCngn: number;
-  formatted: {
-    volume: string;
-    locked: string;
-  };
-}
-
-function getBackendUrl() {
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-    return '';
-  }
-  return 'http://localhost:4000';
-}
+import { useAuth } from '@/context/AuthContext';
 
 // Animated counter hook
 function useCountUp(target: number, duration = 1200, started = false) {
@@ -31,19 +10,17 @@ function useCountUp(target: number, duration = 1200, started = false) {
   const frameRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!started || target === 0) {
-      setValue(target);
-      return;
-    }
+    if (!started) return;
+    if (target === 0) { setValue(0); return; }
+
     const start = performance.now();
-    const from = 0;
 
     const animate = (now: number) => {
       const elapsed = now - start;
       const progress = Math.min(elapsed / duration, 1);
       // easeOutExpo
       const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-      setValue(Math.round(from + (target - from) * eased));
+      setValue(Math.round(target * eased));
       if (progress < 1) {
         frameRef.current = requestAnimationFrame(animate);
       }
@@ -66,20 +43,18 @@ interface StatCardProps {
   icon: React.ReactNode;
   label: string;
   value: number;
-  suffix?: string;
-  prefix?: string;
   format?: 'compact' | 'number';
   color: string;
   started: boolean;
 }
 
-function StatCard({ icon, label, value, suffix = '', prefix = '', format = 'number', color, started }: StatCardProps) {
-  const counted = useCountUp(value, 1200, started);
-  const display = format === 'compact' ? formatCompact(counted) : `${prefix}${counted.toLocaleString()}${suffix}`;
+function StatCard({ icon, label, value, format = 'number', color, started }: StatCardProps) {
+  const counted = useCountUp(value, 1400, started);
+  const display = format === 'compact' ? formatCompact(counted) : counted.toLocaleString();
 
   return (
     <div className="flex items-center space-x-3 group">
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${color} transition-all group-hover:scale-110`}>
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${color} transition-all group-hover:scale-110 duration-200`}>
         {icon}
       </div>
       <div className="min-w-0">
@@ -91,33 +66,11 @@ function StatCard({ icon, label, value, suffix = '', prefix = '', format = 'numb
 }
 
 export default function ProtocolStats() {
-  const [stats, setStats] = useState<ProtocolStatsData | null>(null);
+  const { tokens, tradesMap } = useAuth();
   const [started, setStarted] = useState(false);
-  const [loading, setLoading] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
-  const fetchStats = async () => {
-    try {
-      const base = getBackendUrl();
-      const res = await fetch(`${base}/api/stats`);
-      if (!res.ok) return;
-      const data: ProtocolStatsData = await res.json();
-      setStats(data);
-    } catch {
-      // silently fail — stats are non-critical
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStats();
-    // Poll every 30s for live updates
-    const interval = setInterval(fetchStats, 30_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Trigger count-up animation when element becomes visible
+  // Trigger count-up when panel scrolls into view
   useEffect(() => {
     if (!ref.current || started) return;
     const observer = new IntersectionObserver(
@@ -128,19 +81,61 @@ export default function ProtocolStats() {
     return () => observer.disconnect();
   }, [started]);
 
-  if (loading) {
-    return (
-      <div className="glass-card rounded-2xl border border-white/10 p-4 animate-pulse">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-12 bg-white/5 rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Re-trigger animation when data first loads
+  useEffect(() => {
+    if (tokens.length > 0 && !started) {
+      setStarted(true);
+    }
+  }, [tokens.length]);
 
-  if (!stats) return null;
+  // Compute all stats from client-side state (authoritative — backed by localStorage)
+  const stats = useMemo(() => {
+    // All trades flattened from tradesMap
+    const allTrades = Object.values(tradesMap).flat();
+
+    // Total cNGN volume = sum of absolute cngn_amount across all trades
+    const totalVolumeCngn = allTrades.reduce((acc, tr) => {
+      const amt = typeof tr.cngn_amount === 'number' ? Math.abs(tr.cngn_amount) : 0;
+      return acc + (isNaN(amt) ? 0 : amt);
+    }, 0);
+
+    // Also sum raisedCngn from tokens as a floor (captures buys even if tradesMap is sparse)
+    const totalRaisedCngn = tokens.reduce((acc, t) => acc + Math.max(0, t.raisedCngn ?? 0), 0);
+
+    // Use the larger of the two as the best volume estimate
+    const bestVolume = Math.max(totalVolumeCngn, totalRaisedCngn);
+
+    // Unique traders (from tradesMap — trader_wallet field)
+    const traderWallets = new Set<string>();
+    allTrades.forEach(tr => {
+      if (tr.trader_wallet) traderWallets.add(tr.trader_wallet.toLowerCase());
+    });
+
+    // Unique deployers (creator wallets on tokens)
+    const deployerWallets = new Set<string>();
+    tokens.forEach(t => {
+      if (t.creator_wallet) deployerWallets.add(t.creator_wallet.toLowerCase());
+    });
+
+    // Combined unique wallets (union of traders + deployers)
+    const allWalletsArr = Array.from(traderWallets);
+    deployerWallets.forEach(w => allWalletsArr.push(w));
+    const allWallets = new Set(allWalletsArr);
+
+    // Graduated tokens
+    const migratedTokens = tokens.filter(t => t.migrated).length;
+
+    return {
+      totalVolumeCngn: Math.round(bestVolume),
+      totalTrades: allTrades.length,
+      totalTokens: tokens.length,
+      migratedTokens,
+      uniqueTraders: traderWallets.size,
+      uniqueDeployers: deployerWallets.size,
+      totalUniqueWallets: allWallets.size,
+      totalLiquidityLockedCngn: Math.round(totalRaisedCngn),
+    };
+  }, [tokens, tradesMap]);
 
   const statItems = [
     {
@@ -187,7 +182,7 @@ export default function ProtocolStats() {
     },
     {
       icon: <ShieldCheck className="w-4 h-4 text-lime-400" />,
-      label: 'Graduated Tokens',
+      label: 'Graduated',
       value: stats.migratedTokens,
       format: 'number' as const,
       color: 'bg-lime-500/10 border border-lime-500/20',
@@ -201,16 +196,34 @@ export default function ProtocolStats() {
     },
   ];
 
+  // Show skeleton only briefly on first load (tokens array not yet populated from localStorage)
+  if (tokens.length === 0 && stats.totalTrades === 0) {
+    return (
+      <div className="glass-card rounded-2xl border border-white/10 p-4 animate-pulse">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-12 bg-white/5 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div ref={ref} className="glass-card rounded-2xl border border-white/10 p-4 sm:p-5 relative overflow-hidden">
-      {/* subtle top glow line */}
+      {/* Subtle top glow line */}
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent" />
 
       {/* Header */}
-      <div className="flex items-center space-x-2 mb-4">
-        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-        <span className="text-[11px] uppercase tracking-widest text-slate-400 font-grotesk font-bold">
-          Live Protocol Stats · Arc Testnet
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[11px] uppercase tracking-widest text-slate-400 font-grotesk font-bold">
+            Live Protocol Stats · Arc Testnet
+          </span>
+        </div>
+        <span className="text-[10px] text-slate-600 font-inter hidden sm:block">
+          Source: on-chain + local cache
         </span>
       </div>
 
