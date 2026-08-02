@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { TradeItem, DetailedMetrics, deriveTokenMetrics, quoteBuy, quoteSell } from '@/lib/metrics';
+import { createClient as createSupabaseClient } from '@/utils/supabase/client';
 
 export interface TokenItem {
   address: string;
@@ -560,6 +561,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Instant cross-tab broadcast so other accounts see new token immediately
     broadcastRef.current?.postMessage({ type: 'LAUNCH', payload: { token: newToken } });
 
+    // Direct Supabase Browser SDK Write
+    try {
+      const supabase = createSupabaseClient();
+      supabase.from('tokens').upsert({
+        address: tokenAddr.toLowerCase(),
+        curve_address: curveAddr.toLowerCase(),
+        name,
+        symbol: symbol.toUpperCase(),
+        metadata_uri: imageUrl || "/jollof.png",
+        creator_wallet: newToken.creator_wallet,
+        migrated: false,
+        raised_cngn: 0,
+        description,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'address' }).then();
+    } catch (e) {
+      console.warn("Supabase launch token direct write notice:", e);
+    }
+
     // Post new token to backend API for cross-device sync
     const backendUrl = getBackendUrl();
     fetch(`${backendUrl}/api/tokens`, {
@@ -640,6 +660,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updatedToken: { ...token, address: tokenAddress, raisedCngn: newRaised, migrated: isMigrated }
       }
     });
+
+    // Direct Supabase Browser SDK Write
+    try {
+      const supabase = createSupabaseClient();
+      supabase.from('trades').upsert({
+        token_address: tokenAddress.toLowerCase(),
+        trader_wallet: walletAddress || '0xUser...48f2',
+        side: 'buy',
+        cngn_amount: cngnAmount,
+        token_amount: Math.round(tokensOut),
+        price: executionPrice,
+        tx_hash: newTrade.tx_hash,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'tx_hash' }).then();
+
+      supabase.from('tokens').update({
+        raised_cngn: newRaised,
+        migrated: isMigrated
+      }).eq('address', addrLower).then();
+    } catch (e) {
+      console.warn("Supabase buy trade direct write notice:", e);
+    }
 
     // Post trade to backend API for cross-device sync
     const backendUrl = getBackendUrl();
@@ -729,6 +771,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updatedToken: { ...token, address: tokenAddress, raisedCngn: newRaised }
       }
     });
+
+    // Direct Supabase Browser SDK Write
+    try {
+      const supabase = createSupabaseClient();
+      supabase.from('trades').upsert({
+        token_address: tokenAddress.toLowerCase(),
+        trader_wallet: walletAddress || '0xUser...48f2',
+        side: 'sell',
+        cngn_amount: Number(cngnOut.toFixed(2)),
+        token_amount: tokenAmount,
+        price: executionPrice,
+        tx_hash: newTrade.tx_hash,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'tx_hash' }).then();
+
+      supabase.from('tokens').update({
+        raised_cngn: newRaised
+      }).eq('address', addrLower).then();
+    } catch (e) {
+      console.warn("Supabase sell trade direct write notice:", e);
+    }
 
     // Post trade to backend API for cross-device sync
     const backendUrl = getBackendUrl();
