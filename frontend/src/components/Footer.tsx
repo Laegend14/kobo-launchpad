@@ -1,10 +1,47 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ExternalLink, Github, Sparkles, ShieldCheck, Flame, Layers } from 'lucide-react';
+import { ExternalLink, Github, Sparkles, ShieldCheck, Flame, Layers, TrendingUp, Users, Rocket } from 'lucide-react';
+
+interface FooterStats {
+  totalVolumeCngn: number;
+  totalTrades: number;
+  totalTokens: number;
+  totalUniqueWallets: number;
+}
+
+function getBackendUrl() {
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+    return '';
+  }
+  return 'http://localhost:4000';
+}
+
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `₦${(n / 1_000).toFixed(0)}K`;
+  return `₦${n.toLocaleString()}`;
+}
 
 export default function Footer() {
+  const [stats, setStats] = useState<FooterStats | null>(null);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const base = getBackendUrl();
+        const res = await fetch(`${base}/api/stats`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setStats(data);
+      } catch { /* non-critical */ }
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <footer className="border-t border-white/10 bg-[#070a10] pt-12 pb-8 font-grotesk">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
@@ -110,6 +147,40 @@ export default function Footer() {
           </div>
 
         </div>
+
+        {/* Compact Live Stats Strip */}
+        {stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-white/5 border border-white/10">
+            <div className="flex items-center space-x-2 text-xs">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <div>
+                <span className="text-slate-500 block text-[10px]">Total Volume</span>
+                <span className="font-bold text-white font-mono">{formatCompact(stats.totalVolumeCngn)}</span>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 text-xs">
+              <Rocket className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <div>
+                <span className="text-slate-500 block text-[10px]">Tokens Launched</span>
+                <span className="font-bold text-white font-mono">{stats.totalTokens.toLocaleString()}</span>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 text-xs">
+              <Users className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+              <div>
+                <span className="text-slate-500 block text-[10px]">Unique Wallets</span>
+                <span className="font-bold text-white font-mono">{stats.totalUniqueWallets.toLocaleString()}</span>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 text-xs">
+              <Layers className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <div>
+                <span className="text-slate-500 block text-[10px]">Total Trades</span>
+                <span className="font-bold text-white font-mono">{stats.totalTrades.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Bottom Bar */}
         <div className="pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-inter">

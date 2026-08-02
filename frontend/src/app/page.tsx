@@ -7,6 +7,7 @@ import {
   X, TrendingUp, ShieldCheck, Hash
 } from 'lucide-react';
 import CurveProgressBar from '@/components/CurveProgressBar';
+import ProtocolStats from '@/components/ProtocolStats';
 import { useAuth } from '@/context/AuthContext';
 
 function highlight(text: string, query: string) {
@@ -189,6 +190,9 @@ export default function HomeFeedPage() {
           </div>
         </div>
       </div>
+
+      {/* Live Protocol Statistics */}
+      <ProtocolStats />
 
       {/* Controls Bar: Filter Tabs + Result Count */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">

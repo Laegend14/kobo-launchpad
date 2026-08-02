@@ -319,6 +319,52 @@ app.get('/api/trades', (req: Request, res: Response) => {
   res.json({ trades: inMemStore.trades, tokens: inMemStore.tokens });
 });
 
+// 13. GET /api/stats - Global protocol statistics
+app.get('/api/stats', (req: Request, res: Response) => {
+  const trades = inMemStore.trades;
+  const tokens = inMemStore.tokens;
+
+  // Total cNGN volume traded (sum of all trade amounts)
+  const totalVolumeCngn = trades.reduce((acc, tr) => acc + Number(tr.cngn_amount), 0);
+
+  // Unique trader wallets across all trades
+  const uniqueTraders = new Set(trades.map(t => (t.trader_wallet || '').toLowerCase()).filter(Boolean));
+
+  // Unique deployer (creator) wallets
+  const uniqueDeployers = new Set(tokens.map(t => (t.creator_wallet || '').toLowerCase()).filter(Boolean));
+
+  // All unique wallets that have interacted (traders + deployers)
+  const allWallets = new Set([...uniqueTraders, ...uniqueDeployers]);
+
+  // Total trades
+  const totalTrades = trades.length;
+
+  // Tokens launched
+  const totalTokens = tokens.length;
+
+  // Tokens that graduated (migrated to Uniswap)
+  const migratedTokens = tokens.filter(t => t.migrated).length;
+
+  // Total liquidity locked across all curves (sum of raisedCngn for non-migrated)
+  const totalLocked = tokens.reduce((acc, t) => acc + Math.max(0, t.raisedCngn || 0), 0);
+
+  res.json({
+    totalVolumeCngn: Math.round(totalVolumeCngn),
+    totalTrades,
+    totalTokens,
+    migratedTokens,
+    uniqueTraders: uniqueTraders.size,
+    uniqueDeployers: uniqueDeployers.size,
+    totalUniqueWallets: allWallets.size,
+    totalLiquidityLockedCngn: Math.round(totalLocked),
+    // Formatted helpers
+    formatted: {
+      volume: `₦${Math.round(totalVolumeCngn).toLocaleString('en-NG')}`,
+      locked: `₦${Math.round(totalLocked).toLocaleString('en-NG')}`,
+    }
+  });
+});
+
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', tokensCount: inMemStore.tokens.length, tradesCount: inMemStore.trades.length });
