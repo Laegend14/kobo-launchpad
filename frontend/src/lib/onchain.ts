@@ -165,6 +165,14 @@ export async function launchTokenOnChain(
       creatorWallet
     };
   } catch (err: any) {
+    const isUserRejection = err?.code === 4001 ||
+      err?.code === 'ACTION_REJECTED' ||
+      /rejected|denied|user rejected|cancelled/i.test(err?.message || '');
+
+    if (isUserRejection) {
+      throw new Error("Transaction signature was rejected or cancelled in your wallet.");
+    }
+
     console.warn("[On-Chain Launch Warning]:", err.message || err);
     return {
       tokenAddress: fallbackToken,
@@ -245,6 +253,14 @@ export async function buyTokenOnChain(
       tokensOut: Number(ethers.formatUnits(minTokensOut, 18))
     };
   } catch (err: any) {
+    const isUserRejection = err?.code === 4001 ||
+      err?.code === 'ACTION_REJECTED' ||
+      /rejected|denied|user rejected|cancelled/i.test(err?.message || '');
+
+    if (isUserRejection) {
+      throw new Error("Transaction signature was rejected or cancelled in your wallet.");
+    }
+
     console.warn("[On-Chain Buy Notice]:", err.message || err);
     return { txHash: fallbackTx, tokensOut: 0 };
   }
@@ -295,6 +311,14 @@ export async function sellTokenOnChain(
       cngnOut: Number(ethers.formatUnits(minCngnOut, 18))
     };
   } catch (err: any) {
+    const isUserRejection = err?.code === 4001 ||
+      err?.code === 'ACTION_REJECTED' ||
+      /rejected|denied|user rejected|cancelled/i.test(err?.message || '');
+
+    if (isUserRejection) {
+      throw new Error("Transaction signature was rejected or cancelled in your wallet.");
+    }
+
     console.warn("[On-Chain Sell Notice]:", err.message || err);
     return { txHash: fallbackTx, cngnOut: 0 };
   }
