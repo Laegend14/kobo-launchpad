@@ -9,6 +9,8 @@ export const TOKEN_FACTORY_ABI = [
   "function launchToken(string name, string symbol, string metadataURI) external returns (address token, address curve)",
   "function getAllTokensCount() external view returns (uint256)",
   "function allTokens(uint256 index) external view returns (address)",
+  "function tokenToCurve(address token) external view returns (address)",
+  "function isLaunchedToken(address token) external view returns (bool)",
   "event TokenLaunched(address indexed token, address indexed curve, string name, string symbol, string metadataURI, address indexed creator, uint256 timestamp)"
 ];
 
@@ -361,3 +363,184 @@ export async function getOnChainReserves(curveAddress: string): Promise<{
     return null;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BLOCKCHAIN AS SOURCE OF TRUTH — Token Indexer & Trade History
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ChainTokenData {
+  address: string;
+  curve_address: string;
+  name: string;
+  symbol: string;
+  metadata_uri: string;
+  creator_wallet: string;
+  raisedCngn: number;
+  migrated: boolean;
+  blockNumber: number;
+  timestamp: number;
+}
+
+export interface ChainTradeData {
+  token_address: string;       // we attach this when iterating per token
+  trader_wallet: string;
+  side: 'buy' | 'sell';
+  cngn_amount: number;
+  token_amount: number;
+  price: number;
+  timestamp: number;
+  tx_hash: string;
+  block_number: number;
+}
+
+/**
+ * Primary on-chain token discovery.
+ * Queries TokenLaunched events from TokenFactory to get all deployed tokens
+ * with their metadata, then fetches live reserves from each BondingCurve.
+ *
+ * This is the blockchain-as-source-of-truth approach — no backend DB required.
+ */
+export async function getAllTokensFromChain(): Promise<ChainTokenData[]> {
+  try {
+    const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
+    const factory = new ethers.Contract(TOKEN_FACTORY_ADDRESS, TOKEN_FACTORY_ABI, provider);
+
+    // Query all TokenLaunched events from genesis block
+    let events: ethers.EventLog[] = [];
+    try {
+      const rawEvents = await factory.queryFilter(factory.filters.TokenLaunched(), 0, 'latest');
+      events = rawEvents.filter((e): e is ethers.EventLog => 'args' in e);
+    } catch (evtErr) {
+      // Fallback: paginate in chunks of 10,000 blocks if the RPC node rejects large queries
+      console.warn('[On-Chain Indexer] Full range query failed, trying paginated approach:', evtErr);
+      try {
+        const latestBlock = await provider.getBlockNumber();
+        const chunkSize = 10000;
+        for (let fromBlock = 0; fromBlock <= latestBlock; fromBlock += chunkSize) {
+          const toBlock = Math.min(fromBlock + chunkSize - 1, latestBlock);
+          const chunk = await factory.queryFilter(factory.filters.TokenLaunched(), fromBlock, toBlock);
+          const typedChunk = chunk.filter((e): e is ethers.EventLog => 'args' in e);
+          events.push(...typedChunk);
+        }
+      } catch (paginateErr) {
+        console.warn('[On-Chain Indexer] Paginated query also failed:', paginateErr);
+        return [];
+      }
+    }
+
+    if (events.length === 0) return [];
+
+    // Build list of token data from events (name, symbol, metadataURI, creator are only in events)
+    const tokenDataList: ChainTokenData[] = events.map(evt => ({
+      address: evt.args.token as string,
+      curve_address: evt.args.curve as string,
+      name: evt.args.name as string,
+      symbol: evt.args.symbol as string,
+      metadata_uri: (evt.args.metadataURI as string) || '/jollof.png',
+      creator_wallet: evt.args.creator as string,
+      raisedCngn: 0,
+      migrated: false,
+      blockNumber: evt.blockNumber,
+      timestamp: Number(evt.args.timestamp) * 1000 || Date.now()
+    }));
+
+    // Fetch live reserves for all tokens in parallel (with concurrency limit to avoid rate limits)
+    const CONCURRENCY = 5;
+    for (let i = 0; i < tokenDataList.length; i += CONCURRENCY) {
+      const batch = tokenDataList.slice(i, i + CONCURRENCY);
+      await Promise.all(
+        batch.map(async (tokenData, batchIdx) => {
+          try {
+            const reserves = await getOnChainReserves(tokenData.curve_address);
+            if (reserves) {
+              tokenDataList[i + batchIdx].raisedCngn = reserves.realCngnReserve;
+              tokenDataList[i + batchIdx].migrated = reserves.migrated;
+            }
+          } catch (e) {
+            // Non-blocking: leave defaults
+          }
+        })
+      );
+    }
+
+    // Most recent tokens first
+    return tokenDataList.sort((a, b) => b.blockNumber - a.blockNumber);
+  } catch (err) {
+    console.warn('[On-Chain Indexer] getAllTokensFromChain failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetches on-chain trade history for a specific token from its BondingCurve Trade events.
+ * Returns perfectly accurate trade history — no backend/DB required.
+ */
+export async function getTradingHistoryFromChain(
+  tokenAddress: string,
+  curveAddress: string
+): Promise<ChainTradeData[]> {
+  try {
+    const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
+    const curveContract = new ethers.Contract(curveAddress, BONDING_CURVE_ABI, provider);
+
+    let events: ethers.EventLog[] = [];
+    try {
+      const rawEvents = await curveContract.queryFilter(curveContract.filters.Trade(), 0, 'latest');
+      events = rawEvents.filter((e): e is ethers.EventLog => 'args' in e);
+    } catch (evtErr) {
+      // Paginate on failure
+      try {
+        const latestBlock = await provider.getBlockNumber();
+        const chunkSize = 10000;
+        for (let fromBlock = 0; fromBlock <= latestBlock; fromBlock += chunkSize) {
+          const toBlock = Math.min(fromBlock + chunkSize - 1, latestBlock);
+          const chunk = await curveContract.queryFilter(curveContract.filters.Trade(), fromBlock, toBlock);
+          events.push(...chunk.filter((e): e is ethers.EventLog => 'args' in e));
+        }
+      } catch (paginateErr) {
+        return [];
+      }
+    }
+
+    const trades: ChainTradeData[] = await Promise.all(
+      events.map(async (evt) => {
+        // Get tx receipt for the tx_hash
+        const isBuy = Boolean(evt.args.isBuy);
+        return {
+          token_address: tokenAddress.toLowerCase(),
+          trader_wallet: evt.args.trader as string,
+          side: isBuy ? 'buy' : 'sell',
+          cngn_amount: Number(ethers.formatUnits(evt.args.cngnAmount, 18)),
+          token_amount: Number(ethers.formatUnits(evt.args.tokenAmount, 18)),
+          price: Number(ethers.formatUnits(evt.args.price, 18)),
+          timestamp: Number(evt.args.timestamp) * 1000,
+          tx_hash: evt.transactionHash,
+          block_number: evt.blockNumber
+        };
+      })
+    );
+
+    // Most recent trades first
+    return trades.sort((a, b) => b.block_number - a.block_number);
+  } catch (err) {
+    console.warn('[On-Chain Trade History] getTradingHistoryFromChain failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Refreshes live reserve state for a single token's BondingCurve.
+ * Call this after every buy/sell to update price and raisedCngn in real time.
+ */
+export async function refreshTokenReserves(curveAddress: string): Promise<{
+  raisedCngn: number;
+  migrated: boolean;
+} | null> {
+  const reserves = await getOnChainReserves(curveAddress);
+  if (!reserves) return null;
+  return {
+    raisedCngn: reserves.realCngnReserve,
+    migrated: reserves.migrated
+  };
+}
+

@@ -6,6 +6,7 @@ import { Rocket, Sparkles, UploadCloud, Info, CheckCircle2, RefreshCw, ArrowUpRi
 import { useAuth } from '../../context/AuthContext';
 
 import { launchTokenOnChain } from '@/lib/onchain';
+import { createClient as createSupabaseClient } from '@/utils/supabase/client';
 
 export default function CreateTokenPage() {
   const router = useRouter();
@@ -88,6 +89,32 @@ export default function CreateTokenPage() {
     const newToken = launchToken(name, symbol, description, imageUrl, onChainAddress, onChainCurve, onChainTxHash);
     setIsDeploying(false);
     setSuccessToken(newToken);
+
+    // Write off-chain metadata (description + image) to Supabase for enrichment
+    // The token itself is discovered via TokenLaunched events from the chain
+    if (onChainAddress) {
+      try {
+        const supabase = createSupabaseClient();
+        const metaImageUrl = imageUrl && !imageUrl.startsWith('data:') && imageUrl.length < 300
+          ? imageUrl
+          : '/jollof.png';
+        await supabase.from('tokens').upsert({
+          address: onChainAddress.toLowerCase(),
+          curve_address: onChainCurve?.toLowerCase() || '',
+          name,
+          symbol,
+          description: description || `${name} ($${symbol}) — launched on Kobo!`,
+          metadata_uri: metaImageUrl,
+          creator_wallet: newToken.creator_wallet,
+          raised_cngn: 0,
+          migrated: false,
+          created_at: new Date().toISOString()
+        }, { onConflict: 'address' });
+      } catch (sbErr) {
+        console.warn('[Create] Supabase metadata write notice:', sbErr);
+        // Non-blocking: the token is already on-chain
+      }
+    }
 
     setTimeout(() => {
       router.push(`/token/${newToken.address}`);

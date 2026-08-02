@@ -24,6 +24,7 @@ export default function TradeWidget({
   const [slippage, setSlippage] = useState<number>(0.5);
   const [isTrading, setIsTrading] = useState<boolean>(false);
   const [tradeSuccessMsg, setTradeSuccessMsg] = useState<string | null>(null);
+  const [tradeErrorMsg, setTradeErrorMsg] = useState<string | null>(null);
 
   const token = tokens.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
   const raisedCngn = token?.raisedCngn || 0;
@@ -59,18 +60,23 @@ export default function TradeWidget({
     if (numAmount <= 0) return;
     setIsTrading(true);
     setTradeSuccessMsg(null);
+    setTradeErrorMsg(null);
 
-    await new Promise(res => setTimeout(res, 500));
-
-    if (side === 'buy') {
-      const res = buyToken(tokenAddress, numAmount);
-      setTradeSuccessMsg(`Successfully bought ~${Math.round(res.tokensOut).toLocaleString()} $${tokenSymbol} for ₦${numAmount.toLocaleString()} cNGN!`);
-    } else {
-      const res = sellToken(tokenAddress, numAmount);
-      setTradeSuccessMsg(`Successfully sold ${numAmount.toLocaleString()} $${tokenSymbol} for ~₦${res.cngnOut.toLocaleString()} cNGN!`);
+    try {
+      if (side === 'buy') {
+        const res = await buyToken(tokenAddress, numAmount);
+        const shortTx = res.txHash && res.txHash !== '0x...' ? ` (Tx: ${res.txHash.substring(0, 8)}...)` : '';
+        setTradeSuccessMsg(`Successfully bought ~${Math.round(res.tokensOut).toLocaleString()} $${tokenSymbol} for ₦${numAmount.toLocaleString()} cNGN!${shortTx}`);
+      } else {
+        const res = await sellToken(tokenAddress, numAmount);
+        const shortTx = res.txHash && res.txHash !== '0x...' ? ` (Tx: ${res.txHash.substring(0, 8)}...)` : '';
+        setTradeSuccessMsg(`Successfully sold ${numAmount.toLocaleString()} $${tokenSymbol} for ~₦${res.cngnOut.toLocaleString()} cNGN!${shortTx}`);
+      }
+    } catch (err: any) {
+      setTradeErrorMsg(err.message || "Trade signature was rejected or cancelled.");
+    } finally {
+      setIsTrading(false);
     }
-
-    setIsTrading(false);
   };
 
   return (
@@ -244,6 +250,13 @@ export default function TradeWidget({
         <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-[#00E676] flex items-center space-x-2">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span>{tradeSuccessMsg}</span>
+        </div>
+      )}
+
+      {tradeErrorMsg && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-center space-x-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>{tradeErrorMsg}</span>
         </div>
       )}
 
