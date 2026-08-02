@@ -66,10 +66,16 @@ class InMemStore {
 
 export const inMemStore = new InMemStore();
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mnnruqxujmlptzlrjdbq.supabase.co";
-const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_LCqo1bRQRiTN2t5nlW39KA_B1-aliY1";
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-export const supabase: SupabaseClient = createSupabaseClient(supabaseUrl, supabaseKey);
+// A durable, shared backing store is REQUIRED. The in-memory store is per-process
+// and per-instance — two backend replicas (or a restart) would each see a different
+// world, which is exactly the cross-account divergence we are eliminating. The chain
+// is the true source of truth for tokens/trades; this store only mirrors off-chain
+// metadata and serves the fiat ramp, but it must still be shared across instances.
+export const supabase: SupabaseClient | null =
+  supabaseUrl && supabaseKey ? createSupabaseClient(supabaseUrl, supabaseKey) : null;
 
 const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL || process.env.POSTGRES_URL;
 
@@ -81,12 +87,15 @@ if (dbUrl) {
   });
 }
 
+/** True when a durable, cross-instance backing store (Postgres or Supabase) is configured. */
+export const hasDurableStore = Boolean(pool || supabase);
+
 export async function queryDB(text: string, params?: any[]) {
   if (pool) {
     try {
       return await pool.query(text, params);
     } catch (err) {
-      console.warn("Postgres query error, using in-memory store fallback:", err);
+      console.warn("Postgres query error, falling through to Supabase/in-memory:", err);
     }
   }
   return null;
@@ -94,8 +103,27 @@ export async function queryDB(text: string, params?: any[]) {
 
 // Auto-initialize DB schema on start
 export async function initDB() {
+  if (!hasDurableStore) {
+    // Fail loudly instead of silently running on volatile per-instance memory.
+    // A memory-only backend would give every connected client a different view of
+    // the world (and lose all data on restart) — exactly the anti-pattern we're
+    // removing. The chain is the source of truth for tokens/trades; Supabase holds
+    // off-chain metadata + the fiat ledger.
+    throw new Error(
+      "No durable database configured. Set SUPABASE_URL + SUPABASE_SECRET_KEY " +
+      "(or DATABASE_URL / SUPABASE_DATABASE_URL / POSTGRES_URL) before starting the backend. " +
+      "The chain is the source of truth for tokens & trades; Supabase/Postgres mirror off-chain data."
+    );
+  }
   if (!pool) {
-    console.log("ℹ️ No DATABASE_URL provided. Running in high-performance local memory mode.");
+    console.log("ℹ️ Using Supabase REST as the durable store (no direct Postgres DATABASE_URL).");
+    // Verify the Supabase client can actually reach the project — surface config errors early.
+    try {
+      await supabase!.from('tokens').select('address').limit(1);
+      console.log("⚡ Supabase connection verified.");
+    } catch (err) {
+      throw new Error(`Supabase is configured but unreachable: ${(err as Error)?.message}. Fix the credentials or DATABASE_URL and restart.`);
+    }
     return;
   }
   try {
@@ -131,7 +159,7 @@ export async function initDB() {
     `);
     console.log("⚡ Database connected & schema initialized successfully for production scale!");
   } catch (err) {
-    console.warn("Could not auto-initialize DB schema:", err);
+    throw new Error(`Could not auto-initialize DB schema: ${(err as Error)?.message}`);
   }
 }
 
@@ -156,6 +184,7 @@ export async function getAllTokensDB(): Promise<TokenRecord[]> {
 
   // Supabase REST Client fallback
   try {
+    if (!supabase) return inMemStore.tokens;
     const { data } = await supabase.from('tokens').select('*').order('created_at', { ascending: false });
     if (data && Array.isArray(data) && data.length > 0) {
       return data.map((r: any) => ({
@@ -226,6 +255,7 @@ export async function saveTokenDB(token: TokenRecord): Promise<TokenRecord> {
 
   // Supabase REST Client upsert
   try {
+    if (!supabase) return token;
     await supabase.from('tokens').upsert({
       address: token.address.toLowerCase(),
       curve_address: token.curve_address.toLowerCase(),
@@ -261,6 +291,7 @@ export async function updateTokenReserveDB(address: string, raisedCngn: number, 
   `, [raisedCngn, migrated, addrLower]);
 
   try {
+    if (!supabase) return;
     await supabase.from('tokens').update({
       raised_cngn: raisedCngn,
       migrated: migrated
@@ -289,6 +320,7 @@ export async function getAllTradesDB(): Promise<TradeRecord[]> {
 
   // Supabase REST Client fallback
   try {
+    if (!supabase) return inMemStore.trades;
     const { data } = await supabase.from('trades').select('*').order('created_at', { ascending: false }).limit(500);
     if (data && Array.isArray(data) && data.length > 0) {
       return data.map((r: any) => ({
@@ -349,6 +381,7 @@ export async function saveTradeDB(trade: TradeRecord): Promise<TradeRecord> {
 
   // Supabase REST Client insert
   try {
+    if (!supabase) return trade;
     await supabase.from('trades').upsert({
       token_address: trade.token_address.toLowerCase(),
       trader_wallet: trade.trader_wallet,
@@ -374,6 +407,7 @@ export async function clearAllDataDB() {
   await queryDB('TRUNCATE TABLE trades, tokens CASCADE');
 
   try {
+    if (!supabase) return;
     await supabase.from('trades').delete().neq('tx_hash', '0x_none');
     await supabase.from('tokens').delete().neq('address', '0x_none');
   } catch (err) {

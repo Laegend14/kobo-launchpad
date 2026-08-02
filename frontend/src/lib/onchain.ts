@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 
-export const TOKEN_FACTORY_ADDRESS = "0xA1E20bed244Ddd60486195e917EE8D741Fe28618";
-export const CNGN_ADDRESS = "0xe634A98791a83951E3452B2c8B1072e98C03A93F";
+export const TOKEN_FACTORY_ADDRESS = "0x4Ca9A69ff8dBF37819d21DB37260142416796D72";
+export const CNGN_ADDRESS = "0x21c494f10E7a10C1792D0Ba68bC8b8cFC6E554C7";
 export const ARC_TESTNET_CHAIN_ID = "0x4cef52"; // 5042002 in hex (verified: 5042002 = 0x4CEF52)
 export const ARC_RPC_URL = "https://rpc.testnet.arc.io";
 
@@ -105,17 +105,10 @@ export async function launchTokenOnChain(
   symbol: string,
   metadataUri: string
 ): Promise<OnChainLaunchResult> {
-  let fallbackToken = `0x${Math.random().toString(16).substring(2, 42)}`;
-  let fallbackCurve = `0x${Math.random().toString(16).substring(2, 42)}`;
-  let fallbackTx = `0x${Math.random().toString(16).substring(2, 66)}`;
-
   if (typeof window === 'undefined' || !(window as any).ethereum) {
-    return {
-      tokenAddress: fallbackToken,
-      curveAddress: fallbackCurve,
-      txHash: fallbackTx,
-      creatorWallet: "0xUser...1234"
-    };
+    throw new Error(
+      "No Web3 wallet detected. Install MetaMask (or another Arc-compatible wallet) and connect it to launch a token on-chain."
+    );
   }
 
   try {
@@ -149,6 +142,9 @@ export async function launchTokenOnChain(
     const receipt = await tx.wait();
     console.log(`[On-Chain] Block confirmed in tx ${receipt.hash}`);
 
+    let tokenAddress: string | undefined;
+    let curveAddress: string | undefined;
+
     if (receipt && receipt.logs) {
       for (const log of receipt.logs) {
         try {
@@ -157,8 +153,8 @@ export async function launchTokenOnChain(
             data: log.data
           });
           if (parsed && parsed.name === 'TokenLaunched') {
-            fallbackToken = parsed.args.token;
-            fallbackCurve = parsed.args.curve;
+            tokenAddress = parsed.args.token;
+            curveAddress = parsed.args.curve;
             break;
           }
         } catch (e) {
@@ -167,9 +163,19 @@ export async function launchTokenOnChain(
       }
     }
 
+    if (!tokenAddress || !curveAddress) {
+      // The tx confirmed but we could not read the TokenLaunched event. Rather than
+      // fabricate an address (which would create a phantom token no other user can
+      // discover on-chain), surface the tx hash so the launch can be reconciled.
+      throw new Error(
+        `Launch transaction ${receipt.hash} confirmed but the TokenLaunched event could not be read. ` +
+        `Do not retry — check the explorer for the deployed token before launching again.`
+      );
+    }
+
     return {
-      tokenAddress: fallbackToken,
-      curveAddress: fallbackCurve,
+      tokenAddress,
+      curveAddress,
       txHash: receipt.hash,
       creatorWallet
     };
@@ -182,13 +188,11 @@ export async function launchTokenOnChain(
       throw new Error("Transaction signature was rejected or cancelled in your wallet.");
     }
 
-    console.warn("[On-Chain Launch Warning]:", err.message || err);
-    return {
-      tokenAddress: fallbackToken,
-      curveAddress: fallbackCurve,
-      txHash: fallbackTx,
-      creatorWallet: "0xUser...1234"
-    };
+    // Do NOT fabricate a fake token address on failure. A phantom address written to
+    // local state would never be discoverable on-chain by other users (the root cause
+    // of "my token doesn't show up for others"). Propagate the real error instead.
+    console.error("[On-Chain Launch Error]:", err?.message || err);
+    throw new Error(err?.shortMessage || err?.reason || err?.message || "On-chain token launch failed.");
   }
 }
 
@@ -197,7 +201,7 @@ export async function launchTokenOnChain(
  */
 export async function mintCngnOnChain(toAddress: string, amountCngn: number): Promise<string> {
   if (typeof window === 'undefined' || !(window as any).ethereum) {
-    return '0x...';
+    throw new Error("No Web3 wallet detected. Connect a wallet to mint cNGN on-chain.");
   }
 
   try {
@@ -211,8 +215,14 @@ export async function mintCngnOnChain(toAddress: string, amountCngn: number): Pr
     const receipt = await tx.wait();
     return receipt.hash;
   } catch (err: any) {
-    console.warn("[On-Chain cNGN Mint Notice]:", err.message || err);
-    return '0x...';
+    const isUserRejection = err?.code === 4001 ||
+      err?.code === 'ACTION_REJECTED' ||
+      /rejected|denied|user rejected|cancelled/i.test(err?.message || '');
+    if (isUserRejection) {
+      throw new Error("cNGN mint was rejected or cancelled in your wallet.");
+    }
+    console.error("[On-Chain cNGN Mint Error]:", err?.message || err);
+    throw new Error(err?.shortMessage || err?.reason || err?.message || "On-chain cNGN mint failed.");
   }
 }
 
@@ -223,9 +233,8 @@ export async function buyTokenOnChain(
   curveAddress: string,
   cngnAmount: number
 ): Promise<{ txHash: string; tokensOut: number }> {
-  const fallbackTx = `0x${Math.random().toString(16).substring(2, 66)}`;
   if (typeof window === 'undefined' || !(window as any).ethereum) {
-    return { txHash: fallbackTx, tokensOut: 0 };
+    throw new Error("No Web3 wallet detected. Connect a wallet to trade on-chain.");
   }
 
   try {
@@ -270,8 +279,10 @@ export async function buyTokenOnChain(
       throw new Error("Transaction signature was rejected or cancelled in your wallet.");
     }
 
-    console.warn("[On-Chain Buy Notice]:", err.message || err);
-    return { txHash: fallbackTx, tokensOut: 0 };
+    // Do NOT return a fake tx hash on failure. A phantom "successful" buy would show
+    // in the UI but never exist on-chain for other users. Propagate the real error.
+    console.error("[On-Chain Buy Error]:", err?.message || err);
+    throw new Error(err?.shortMessage || err?.reason || err?.message || "On-chain buy failed.");
   }
 }
 
@@ -283,9 +294,8 @@ export async function sellTokenOnChain(
   curveAddress: string,
   tokenAmount: number
 ): Promise<{ txHash: string; cngnOut: number }> {
-  const fallbackTx = `0x${Math.random().toString(16).substring(2, 66)}`;
   if (typeof window === 'undefined' || !(window as any).ethereum) {
-    return { txHash: fallbackTx, cngnOut: 0 };
+    throw new Error("No Web3 wallet detected. Connect a wallet to trade on-chain.");
   }
 
   try {
@@ -328,8 +338,10 @@ export async function sellTokenOnChain(
       throw new Error("Transaction signature was rejected or cancelled in your wallet.");
     }
 
-    console.warn("[On-Chain Sell Notice]:", err.message || err);
-    return { txHash: fallbackTx, cngnOut: 0 };
+    // Do NOT return a fake tx hash on failure. Propagate the real error so the UI
+    // does not record a sell that never settled on-chain.
+    console.error("[On-Chain Sell Error]:", err?.message || err);
+    throw new Error(err?.shortMessage || err?.reason || err?.message || "On-chain sell failed.");
   }
 }
 

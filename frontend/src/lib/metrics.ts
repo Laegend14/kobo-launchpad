@@ -72,9 +72,12 @@ export interface DetailedMetrics {
 }
 
 const TOTAL_SUPPLY = 1_000_000_000; // 1 Billion Memecoin supply
-const INITIAL_VIRTUAL_CNGN = 10_000;
-const INITIAL_VIRTUAL_TOKENS = 1_000_000_000;
-const MIGRATION_TARGET_CNGN = 50_000;
+// Exported so the bonding-curve price math in AuthContext / TradeWidget stays in
+// lockstep with the on-chain TokenFactory constants. INITIAL_VIRTUAL_CNGN MUST
+// equal TokenFactory.VIRTUAL_CNGN_RESERVE (3,000 cNGN) — the launch price seed.
+export const INITIAL_VIRTUAL_CNGN = 3_000;
+export const INITIAL_VIRTUAL_TOKENS = 1_000_000_000;
+export const MIGRATION_TARGET_CNGN = 50_000;
 
 /**
  * Calculates current price using virtual constant-product reserves: Price = VirtualCNGN / VirtualToken

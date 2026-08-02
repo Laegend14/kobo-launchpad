@@ -119,6 +119,9 @@ contract BondingCurve is ReentrancyGuard {
         // Checks-Effects
         virtualCngnReserve += effectiveCngn;
         virtualTokenReserve -= tokensOut;
+        // Track the reserve we can actually back with cNGN in this contract. The 1%
+        // creator fee is NOT part of the tradable pool — it accrues in a separate
+        // bucket so sell() can never drain past the k-curve floor.
         realCngnReserve += effectiveCngn;
         accumulatedCreatorFees += creatorFee;
 
@@ -159,13 +162,31 @@ contract BondingCurve is ReentrancyGuard {
         uint256 creatorFee = (grossCngnOut * CREATOR_FEE_BPS) / 10000;
         uint256 netCngnOut = grossCngnOut - creatorFee;
 
+        require(grossCngnOut <= virtualCngnReserve, "Exceeds virtual reserve");
         require(netCngnOut <= realCngnReserve, "Exceeds real reserve");
         require(netCngnOut >= minCngnOut, "Slippage tolerance exceeded");
 
-        // Checks-Effects
+        // Checks-Effects. The seller is paid netCngnOut (gross minus the 1% creator
+        // fee). The VIRTUAL reserve — which sets the k-curve price — moves by the
+        // GROSS amount so price action reflects the full trade. The REAL reserve —
+        // the cNGN the pool can actually honour to sellers — is drawn down by the
+        // gross as well, so the fee portion (gross - net) that stays in the contract
+        // is NOT double-counted as tradable liquidity. The fee accrues in its own
+        // creator-fee bucket, a claim on the balance separate from the tradable
+        // reserve. This preserves the invariant
+        //   balance >= realCngnReserve + accumulatedCreatorFees
+        // so repeated buy/sell cycles can never drain the pool below what the
+        // k-curve still owes, and the creator can claim fees without breaking
+        // solvency. Subtracting only the net here would inflate realCngnReserve by
+        // the sell fee every trade, letting sellers extract more than the pool holds.
+        //
+        // Because virtualCngnReserve carries a constant initial offset that was never
+        // deposited (the launch price seed), a full-exit gross can round up to at most
+        // 1 wei above realCngnReserve. We clamp the subtraction at zero so that a
+        // legitimate final sell is never bricked by dust while the invariant holds.
         virtualTokenReserve += tokensIn;
-        virtualCngnReserve -= netCngnOut;
-        realCngnReserve -= netCngnOut;
+        virtualCngnReserve -= grossCngnOut;
+        realCngnReserve = grossCngnOut >= realCngnReserve ? 0 : realCngnReserve - grossCngnOut;
         accumulatedCreatorFees += creatorFee;
 
         uint256 price = getCurrentPrice();

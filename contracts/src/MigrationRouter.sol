@@ -13,7 +13,6 @@ import "./interfaces/IUniswapV2.sol";
 contract MigrationRouter is ReentrancyGuard, Ownable {
     address public immutable cngnToken;
     address public immutable uniswapFactory;
-    address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     event Migrated(
         address indexed token,
@@ -32,6 +31,12 @@ contract MigrationRouter is ReentrancyGuard, Ownable {
 
     /**
      * @notice Migrates liquidity from BondingCurve to Uniswap V2 AMM pair.
+     * @dev The BondingCurve transfers its remaining memecoins + real cNGN reserve to
+     *      this router, which mints the pair's LP tokens to the caller (the curve).
+     *      The curve can then transfer those LP tokens wherever it wants — e.g. lock
+     *      them at the dead address for permanent liquidity, or hold them. Minting LP
+     *      to the caller (instead of directly to BURN_ADDRESS) lets the contract owner
+     *      decide the final LP destination instead of burning it unconditionally.
      * @param token Memecoin contract address
      * @param tokenAmount Amount of memecoin to seed LP
      * @param cngnAmount Amount of cNGN to seed LP
@@ -57,8 +62,8 @@ contract MigrationRouter is ReentrancyGuard, Ownable {
         IERC20(token).transfer(pair, tokenAmount);
         IERC20(cngnToken).transfer(pair, cngnAmount);
 
-        // 4. Mint LP tokens directly to BURN_ADDRESS (permanently locked / burned)
-        uint256 liquidity = IUniswapV2Pair(pair).mint(BURN_ADDRESS);
+        // 4. Mint LP tokens to msg.sender (the BondingCurve), which decides final LP destination
+        uint256 liquidity = IUniswapV2Pair(pair).mint(msg.sender);
         require(liquidity > 0, "Zero LP liquidity minted");
 
         emit Migrated(token, pair, tokenAmount, cngnAmount, block.timestamp);

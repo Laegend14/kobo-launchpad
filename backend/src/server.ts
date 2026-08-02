@@ -24,6 +24,13 @@ const fiatAdapter = new MockFiatRampAdapter();
 app.use(cors());
 app.use(express.json());
 
+// Bonding-curve constants — MUST match TokenFactory.VIRTUAL_CNGN_RESERVE (3,000)
+// and the 50,000 cNGN migration threshold on-chain, and the frontend's
+// lib/metrics.ts. Any drift here re-introduces wrong prices / market caps.
+const VIRTUAL_CNGN_RESERVE = 3_000;
+const VIRTUAL_TOKEN_RESERVE = 1_000_000_000;
+const MIGRATION_TARGET_CNGN = 50_000;
+
 // Server-Sent Events (SSE) Client Connections for Realtime Push Sync
 const sseClients: Response[] = [];
 
@@ -43,11 +50,11 @@ function deriveBackendMetrics(token: TokenRecord, allTrades: TradeRecord[]) {
   const tradeRaised = tokenTrades.reduce((acc, tr) => acc + (tr.side === 'buy' ? Number(tr.cngn_amount) : -Number(tr.cngn_amount)), 0);
   const raisedCngn = Math.max(0, token.raisedCngn !== undefined ? token.raisedCngn : tradeRaised);
 
-  const virtualCngn = 10000 + Math.max(0, raisedCngn);
-  const virtualToken = (10000 * 1000000000) / virtualCngn;
+  const virtualCngn = VIRTUAL_CNGN_RESERVE + Math.max(0, raisedCngn);
+  const virtualToken = (VIRTUAL_CNGN_RESERVE * VIRTUAL_TOKEN_RESERVE) / virtualCngn;
   const currentPrice = virtualCngn / virtualToken;
 
-  const totalSupply = 1000000000;
+  const totalSupply = VIRTUAL_TOKEN_RESERVE;
   const circulatingSupply = Math.max(0, totalSupply - virtualToken);
   const marketCapNaira = currentPrice * totalSupply;
   const fdvNaira = currentPrice * totalSupply;
@@ -60,7 +67,7 @@ function deriveBackendMetrics(token: TokenRecord, allTrades: TradeRecord[]) {
   });
 
   const volume24hCngn = buyVolume + sellVolume;
-  const progressPercent = token.migrated ? 100 : Math.min(100, Math.max(0, (raisedCngn / 50000) * 100));
+  const progressPercent = token.migrated ? 100 : Math.min(100, Math.max(0, (raisedCngn / MIGRATION_TARGET_CNGN) * 100));
 
   const walletBalances: Record<string, number> = {};
   tokenTrades.forEach(tr => {
@@ -90,7 +97,7 @@ function deriveBackendMetrics(token: TokenRecord, allTrades: TradeRecord[]) {
     progressPercent: Number(progressPercent.toFixed(2)),
     raisedCngn,
     migrated: Boolean(token.migrated),
-    migrationThreshold: 50000,
+    migrationThreshold: MIGRATION_TARGET_CNGN,
     holderCount,
     security: {
       mintDisabled: true,
@@ -183,24 +190,32 @@ app.post('/api/tokens', async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Missing required token fields: name and symbol" });
   }
 
+  // The token must already exist on-chain. The backend never invents addresses —
+  // a fabricated address would be undiscoverable on the chain every other client
+  // reads. The frontend now writes the off-chain metadata mirror directly to
+  // Supabase; this endpoint only exists for backward-compatible enrichment.
+  if (!address || !curve_address) {
+    return res.status(400).json({
+      error: "Token address and curve address are required. Tokens must be deployed on-chain before they can be indexed."
+    });
+  }
+
   const existingList = await getAllTokensDB();
-  if (address) {
-    const existing = existingList.find(t => t.address.toLowerCase() === address.toLowerCase());
-    if (existing) {
-      const allTrades = await getAllTradesDB();
-      const metrics = deriveBackendMetrics(existing, allTrades);
-      return res.json({ token: { ...existing, raisedCngn: metrics.raisedCngn, migrated: metrics.migrated, metrics } });
-    }
+  const existing = existingList.find(t => t.address.toLowerCase() === address.toLowerCase());
+  if (existing) {
+    const allTrades = await getAllTradesDB();
+    const metrics = deriveBackendMetrics(existing, allTrades);
+    return res.json({ token: { ...existing, raisedCngn: metrics.raisedCngn, migrated: metrics.migrated, metrics } });
   }
 
   const newToken: TokenRecord = {
     id: existingList.length + 1,
-    address: (address || `0x${Math.random().toString(16).substring(2, 42)}`).toLowerCase(),
-    curve_address: (curve_address || `0x${Math.random().toString(16).substring(2, 42)}`).toLowerCase(),
+    address: address.toLowerCase(),
+    curve_address: curve_address.toLowerCase(),
     name,
     symbol: symbol.toUpperCase(),
     metadata_uri: metadata_uri || "/jollof.png",
-    creator_wallet: creator_wallet || "0xUser...1234",
+    creator_wallet: creator_wallet || "0x0000000000000000000000000000000000000000",
     migrated: false,
     raisedCngn: 0,
     description: description || `${name} ($${symbol.toUpperCase()}) launched on Kobo Launchpad!`,
@@ -309,33 +324,27 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
   res.json({ leaderboard: sorted });
 });
 
-// 11. POST /api/trades - Record a new trade (scaled DB persistence + SSE broadcast)
+// 11. POST /api/trades - Record a trade mirror (off-chain enrichment + SSE hint).
+// NOTE: the chain is the source of truth for trades (BondingCurve.Trade events).
+// This endpoint only mirrors a REAL, already-executed on-chain trade so other
+// clients get an instant SSE hint before their next chain poll. It therefore
+// requires a real on-chain tx hash and an already-indexed token — it never
+// fabricates a tx hash or auto-registers a phantom token.
 app.post('/api/trades', async (req: Request, res: Response) => {
-  const { tokenAddress, tokenName, tokenSymbol, traderWallet, side, cngnAmount, tokenAmount, price, txHash } = req.body;
+  const { tokenAddress, traderWallet, side, cngnAmount, tokenAmount, price, txHash } = req.body;
   if (!tokenAddress || !traderWallet || !side || !cngnAmount) {
     return res.status(400).json({ error: "Missing trade parameters" });
+  }
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ error: "A valid on-chain transaction hash (txHash) is required to record a trade." });
   }
 
   const addrLower = tokenAddress.toLowerCase();
   const tokens = await getAllTokensDB();
 
-  // Auto-register missing token on backend if not present
-  let token = tokens.find(t => t.address.toLowerCase() === addrLower);
+  const token = tokens.find(t => t.address.toLowerCase() === addrLower);
   if (!token) {
-    token = {
-      id: tokens.length + 1,
-      address: addrLower,
-      curve_address: addrLower,
-      name: tokenName || "Memecoin",
-      symbol: (tokenSymbol || "MEME").toUpperCase(),
-      metadata_uri: "/jollof.png",
-      creator_wallet: traderWallet,
-      migrated: false,
-      raisedCngn: 0,
-      description: `${tokenName || 'Memecoin'} launched on Kobo Launchpad!`,
-      created_at: new Date().toISOString()
-    };
-    await saveTokenDB(token);
+    return res.status(404).json({ error: "Unknown token. It must be indexed on-chain before its trades can be mirrored." });
   }
 
   const newTrade: TradeRecord = {
@@ -346,7 +355,7 @@ app.post('/api/trades', async (req: Request, res: Response) => {
     cngn_amount: String(cngnAmount),
     token_amount: String(tokenAmount || 0),
     price: String(price || 0),
-    tx_hash: txHash || `0x${Math.random().toString(16).substring(2)}${Date.now().toString(16)}`,
+    tx_hash: txHash,
     created_at: new Date().toISOString()
   };
 
@@ -359,7 +368,7 @@ app.post('/api/trades', async (req: Request, res: Response) => {
   } else {
     newRaised = Math.max(0, newRaised - Number(cngnAmount));
   }
-  const isMigrated = token.migrated || newRaised >= 50000;
+  const isMigrated = token.migrated || newRaised >= MIGRATION_TARGET_CNGN;
   await updateTokenReserveDB(addrLower, newRaised, isMigrated);
 
   const updatedToken = { ...token, raisedCngn: newRaised, migrated: isMigrated };
@@ -424,9 +433,14 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', sseClientsCount: sseClients.length });
 });
 
-// Initialize database schema and start server
+// Initialize database schema and start server. A durable store is mandatory —
+// if initDB throws (no Supabase/Postgres configured or unreachable) we exit rather
+// than silently serve volatile per-instance data.
 initDB().then(() => {
   app.listen(port, () => {
     console.log(`🚀 Kobo Launchpad Backend running at http://localhost:${port}`);
   });
+}).catch((err) => {
+  console.error("❌ Backend startup aborted:", err?.message || err);
+  process.exit(1);
 });

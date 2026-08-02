@@ -1,9 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { TradeItem, DetailedMetrics, deriveTokenMetrics, quoteBuy, quoteSell } from '@/lib/metrics';
+import { TradeItem, DetailedMetrics, deriveTokenMetrics, quoteBuy, quoteSell, INITIAL_VIRTUAL_CNGN, INITIAL_VIRTUAL_TOKENS, MIGRATION_TARGET_CNGN } from '@/lib/metrics';
 import { createClient as createSupabaseClient } from '@/utils/supabase/client';
-import { mintCngnOnChain, buyTokenOnChain, sellTokenOnChain, getAllTokensFromChain, refreshTokenReserves } from '@/lib/onchain';
+import { mintCngnOnChain, buyTokenOnChain, sellTokenOnChain, getAllTokensFromChain, getTradingHistoryFromChain, refreshTokenReserves } from '@/lib/onchain';
 
 export interface TokenItem {
   address: string;
@@ -84,8 +84,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return {};
   });
 
-  // BroadcastChannel for instant cross-tab / cross-account real-time sync (same browser)
+  // BroadcastChannel is a same-browser INSTANT HINT only. It never writes optimistic
+  // token/trade values (those diverge across accounts). Instead a hint just triggers an
+  // immediate authoritative refetch from the chain, so other tabs update within a beat
+  // rather than waiting for the next poll. Cross-browser / cross-device users converge
+  // via the 15s chain poll regardless.
   const broadcastRef = useRef<BroadcastChannel | null>(null);
+  // Lets the instant-hint channels (BroadcastChannel / SSE) trigger an authoritative
+  // chain refetch. Assigned by the chain-sync effect below.
+  const chainSyncRef = useRef<{ run: () => void } | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
@@ -94,65 +101,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     broadcastRef.current = channel;
 
     channel.onmessage = (event: MessageEvent) => {
-      const { type, payload } = event.data || {};
-      if (!type || !payload) return;
-
-      if (type === 'TRADE') {
-        // Incoming trade from another tab — merge into our tradesMap and tokens
-        const { trade, updatedToken } = payload as { trade: TradeItem; updatedToken: TokenItem };
-        const addr = trade.token_address.toLowerCase();
-
-        setTradesMap(prev => {
-          const existing = prev[addr] || [];
-          // Deduplicate by tx_hash — never add the same trade twice
-          if (existing.some(t => t.tx_hash === trade.tx_hash)) return prev;
-          const next = { ...prev, [addr]: [trade, ...existing] };
-          localStorage.setItem('kobo_trades', JSON.stringify(next));
-          return next;
-        });
-
-        setTokens(prev => {
-          const next = prev.map(t => {
-            if (t.address.toLowerCase() !== addr) return t;
-
-            const localRaised = t.raisedCngn ?? 0;
-            const broadcastRaised = updatedToken.raisedCngn ?? localRaised;
-
-            // For buys: raisedCngn only increases — use Math.max to guard against
-            // out-of-order or stale broadcasts overwriting a higher correct value.
-            // For sells: raisedCngn decreases — trust the broadcaster's exact value
-            // (they computed it from the actual sell amount).
-            const safeRaisedCngn = trade.side === 'buy'
-              ? Math.max(localRaised, broadcastRaised)
-              : broadcastRaised;
-
-            return {
-              ...t,
-              raisedCngn: safeRaisedCngn,
-              // migrated is a one-way door: once graduated it never reverts
-              migrated: (t.migrated ?? false) || (updatedToken.migrated ?? false)
-            };
-          });
-          localStorage.setItem('kobo_tokens', JSON.stringify(next));
-          return next;
-        });
-      }
-
-      if (type === 'LAUNCH') {
-        const { token } = payload as { token: TokenItem };
-        setTokens(prev => {
-          if (prev.some(t => t.address.toLowerCase() === token.address.toLowerCase())) return prev;
-          const next = [token, ...prev];
-          localStorage.setItem('kobo_tokens', JSON.stringify(next));
-          return next;
-        });
+      const { type } = event.data || {};
+      // Any launch/trade hint from another tab → pull fresh authoritative chain state.
+      if (type === 'TRADE' || type === 'LAUNCH') {
+        chainSyncRef.current?.run();
       }
     };
 
     return () => { channel.close(); broadcastRef.current = null; };
   }, []);
 
-  // Server-Sent Events (SSE) Stream Connection for Instant Multi-User & Multi-Device Real-Time Sync
+  // Server-Sent Events (SSE) — same pattern as BroadcastChannel: an INSTANT HINT only.
+  // When another backend-connected client reports a trade/launch we do NOT apply their
+  // optimistic values (per-instance state is what breaks cross-account sync). We just
+  // trigger an authoritative chain refetch so everyone converges on the same truth.
   useEffect(() => {
     if (typeof window === 'undefined' || !('EventSource' in window)) return;
 
@@ -161,73 +123,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const backendUrl = getBackendUrl();
       eventSource = new EventSource(`${backendUrl}/api/events`);
 
-      eventSource.addEventListener('TRADE', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          const { trade, updatedToken } = data || {};
-          if (!trade || !trade.token_address) return;
-          const addr = trade.token_address.toLowerCase();
+      const hint = () => chainSyncRef.current?.run();
 
-          const formattedTrade: TradeItem = {
-            id: String(trade.id || trade.tx_hash),
-            token_address: trade.token_address,
-            trader_wallet: trade.trader_wallet,
-            side: trade.side,
-            cngn_amount: Number(trade.cngn_amount),
-            token_amount: Number(trade.token_amount),
-            price: Number(trade.price),
-            timestamp: new Date(trade.created_at || Date.now()).getTime(),
-            tx_hash: trade.tx_hash || '0x...'
-          };
-
-          setTradesMap(prev => {
-            const existing = prev[addr] || [];
-            if (existing.some(t => t.tx_hash === formattedTrade.tx_hash)) return prev;
-            const next = { ...prev, [addr]: [formattedTrade, ...existing] };
-            localStorage.setItem('kobo_trades', JSON.stringify(next));
-            return next;
-          });
-
-          if (updatedToken) {
-            setTokens(prev => {
-              const next = prev.map(t => {
-                if (t.address.toLowerCase() !== addr) return t;
-                const localRaised = t.raisedCngn ?? 0;
-                const streamRaised = updatedToken.raisedCngn ?? localRaised;
-                const safeRaised = trade.side === 'buy'
-                  ? Math.max(localRaised, streamRaised)
-                  : streamRaised;
-
-                return {
-                  ...t,
-                  raisedCngn: safeRaised,
-                  migrated: (t.migrated ?? false) || (updatedToken.migrated ?? false)
-                };
-              });
-              localStorage.setItem('kobo_tokens', JSON.stringify(next));
-              return next;
-            });
-          }
-        } catch (err) {
-          console.warn("SSE trade parse notice:", err);
-        }
-      });
-
-      eventSource.addEventListener('LAUNCH', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          const { token } = data || {};
-          if (!token || !token.address) return;
-          setTokens(prev => {
-            if (prev.some(t => t.address.toLowerCase() === token.address.toLowerCase())) return prev;
-            const next = [token, ...prev];
-            localStorage.setItem('kobo_tokens', JSON.stringify(next));
-            return next;
-          });
-        } catch (err) {
-          console.warn("SSE launch parse notice:", err);
-        }
-      });
+      eventSource.addEventListener('TRADE', hint);
+      eventSource.addEventListener('LAUNCH', hint);
     } catch (err) {
       console.warn("SSE connection notice:", err);
     }
@@ -299,22 +198,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('storage', syncState);
   }, []);
 
-  // Blockchain-first global sync — reads TokenFactory events as primary source of truth
+  // Blockchain-first global sync — the Arc chain is the SINGLE source of truth.
+  //
+  // Tokens come from TokenFactory.TokenLaunched events; per-token reserves (which
+  // drive raisedCngn / price / migration) come from each BondingCurve's live state;
+  // trade history comes from BondingCurve.Trade events. Every user, on every device
+  // and browser, reads the exact same chain state — which is precisely what fixes the
+  // "my coin / my trade doesn't show up for other people" bug. Supabase is used ONLY
+  // to enrich with off-chain metadata (description + image) that isn't cheap to store
+  // on-chain. We do NOT merge in localStorage optimistic values, backend in-memory
+  // trades, or phantom local-only tokens here — those are per-instance and were the
+  // source of cross-account divergence.
   useEffect(() => {
     let isMounted = true;
+    let inFlight = false;
 
     const fetchGlobalSync = async () => {
+      if (inFlight) return; // coalesce overlapping polls / broadcast-triggered refreshes
+      inFlight = true;
       try {
-        // ── STEP 1: Read all tokens from TokenFactory.TokenLaunched events on Arc Testnet ──
-        // This is the authoritative source — any wallet that launched a token appears here
+        // ── STEP 1: authoritative token list from TokenFactory.TokenLaunched events ──
         const chainTokens = await getAllTokensFromChain();
-
         if (!isMounted) return;
 
         if (chainTokens.length > 0) {
-          // ── STEP 2: Enrich with Supabase off-chain metadata (images, descriptions) ──
-          // Supabase is only used for metadata that can't be stored on-chain efficiently
-          let offChainMeta: Record<string, { description?: string; metadata_uri?: string }> = {};
+          // ── STEP 2: enrich with Supabase off-chain metadata (image + description) ──
+          const offChainMeta: Record<string, { description?: string; metadata_uri?: string }> = {};
           try {
             const supabase = createSupabaseClient();
             const { data: dbTokens } = await supabase
@@ -329,148 +238,136 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 };
               });
             }
-          } catch (sbErr) {
+          } catch {
             // Non-blocking: Supabase enrichment is optional
           }
-
           if (!isMounted) return;
 
-          // ── STEP 3: Merge chain data with off-chain metadata and update state ──
-          setTokens(prev => {
-            const merged: TokenItem[] = chainTokens.map(ct => {
-              const addrLower = ct.address.toLowerCase();
-              const meta = offChainMeta[addrLower] || {};
-              // Preserve any locally-known raisedCngn that might be higher (optimistic local update)
-              const existing = prev.find(p => p.address.toLowerCase() === addrLower);
-              const localRaised = existing?.raisedCngn ?? 0;
-              return {
-                address: ct.address,
-                curve_address: ct.curve_address,
-                name: ct.name,
-                symbol: ct.symbol,
-                metadata_uri: meta.metadata_uri || ct.metadata_uri || '/jollof.png',
-                creator_wallet: ct.creator_wallet,
-                raisedCngn: Math.max(localRaised, ct.raisedCngn),
-                migrated: (existing?.migrated ?? false) || ct.migrated,
-                description: meta.description || `${ct.name} ($${ct.symbol}) — launched on Kobo!`
-              };
-            });
-
-            // Preserve any locally-known tokens not yet on-chain (just launched, tx pending)
-            const chainAddrs = new Set(chainTokens.map(c => c.address.toLowerCase()));
-            const localOnly = prev.filter(p => !chainAddrs.has(p.address.toLowerCase()));
-            const result = [...merged, ...localOnly];
-            localStorage.setItem('kobo_tokens', JSON.stringify(result));
-            return result;
+          // ── STEP 3: chain is authoritative. Build the token list purely from chain
+          //            state; only the description/image are taken off-chain. No
+          //            Math.max, no local-only preservation — the chain decides. ──
+          const merged: TokenItem[] = chainTokens.map(ct => {
+            const addrLower = ct.address.toLowerCase();
+            const meta = offChainMeta[addrLower] || {};
+            return {
+              address: ct.address,
+              curve_address: ct.curve_address,
+              name: ct.name,
+              symbol: ct.symbol,
+              metadata_uri: meta.metadata_uri || ct.metadata_uri || '/jollof.png',
+              creator_wallet: ct.creator_wallet,
+              raisedCngn: ct.raisedCngn,        // live realCngnReserve from the curve
+              migrated: ct.migrated,            // live migrated() flag from the curve
+              description: meta.description || `${ct.name} ($${ct.symbol}) — launched on Kobo!`
+            };
           });
-        }
+          setTokens(merged);
+          localStorage.setItem('kobo_tokens', JSON.stringify(merged));
 
-        // ── STEP 4: Sync trade history from backend (complements on-chain events) ──
-        try {
-          const backendUrl = getBackendUrl();
-          const tradeRes = await fetch(`${backendUrl}/api/trades`).catch(() => null);
-          if (tradeRes && tradeRes.ok) {
-            const tradeData = await tradeRes.json();
-            if (tradeData.trades && Array.isArray(tradeData.trades)) {
-              const newMap: Record<string, TradeItem[]> = {};
-              for (const tr of tradeData.trades) {
-                const addr = (tr.token_address || '').toLowerCase();
-                if (!addr) continue;
-                if (!newMap[addr]) newMap[addr] = [];
-                newMap[addr].push({
-                  id: String(tr.id || tr.tx_hash || Math.random()),
-                  token_address: tr.token_address,
-                  trader_wallet: tr.trader_wallet,
-                  side: tr.side,
-                  cngn_amount: Number(tr.cngn_amount),
-                  token_amount: Number(tr.token_amount),
-                  price: Number(tr.price),
-                  timestamp: new Date(tr.created_at || Date.now()).getTime(),
-                  tx_hash: tr.tx_hash || '0x...'
-                });
-              }
-
-              if (!isMounted) return;
-
-              setTradesMap(prev => {
-                const merged = { ...prev };
-                for (const [addr, trades] of Object.entries(newMap)) {
-                  const existingHashes = new Set(
-                    (merged[addr] || []).map(t => t.tx_hash).filter(h => h && h !== '0x...')
-                  );
-                  const toAdd = trades.filter(t =>
-                    !t.tx_hash || t.tx_hash === '0x...' || !existingHashes.has(t.tx_hash)
-                  );
-                  if (toAdd.length > 0) {
-                    merged[addr] = [...toAdd, ...(merged[addr] || [])];
-                  }
+          // ── STEP 4: authoritative trade history from BondingCurve.Trade events ──
+          // Fetch per-token Trade logs in parallel (bounded concurrency). This is the
+          // same for every viewer, so a trade made on any account is visible to all.
+          const CONCURRENCY = 4;
+          const tradeMapNext: Record<string, TradeItem[]> = {};
+          for (let i = 0; i < chainTokens.length; i += CONCURRENCY) {
+            const batch = chainTokens.slice(i, i + CONCURRENCY);
+            const batchResults = await Promise.all(
+              batch.map(async ct => {
+                const addrLower = ct.address.toLowerCase();
+                try {
+                  const chainTrades = await getTradingHistoryFromChain(ct.address, ct.curve_address);
+                  const items: TradeItem[] = chainTrades.map(tr => ({
+                    id: tr.tx_hash,
+                    token_address: ct.address,
+                    trader_wallet: tr.trader_wallet,
+                    side: tr.side,
+                    cngn_amount: tr.cngn_amount,
+                    token_amount: tr.token_amount,
+                    price: tr.price,
+                    timestamp: tr.timestamp,
+                    tx_hash: tr.tx_hash
+                  }));
+                  return [addrLower, items] as const;
+                } catch {
+                  return [addrLower, [] as TradeItem[]] as const;
                 }
-                localStorage.setItem('kobo_trades', JSON.stringify(merged));
-                return merged;
-              });
-            }
+              })
+            );
+            if (!isMounted) return;
+            batchResults.forEach(([addr, items]) => { tradeMapNext[addr] = items; });
           }
-        } catch (tradeErr) {
-          // Non-blocking
+          if (!isMounted) return;
+          setTradesMap(tradeMapNext);
+          localStorage.setItem('kobo_trades', JSON.stringify(tradeMapNext));
         }
       } catch (e) {
-        console.warn('[Kobo] Global sync notice:', e);
+        console.warn('[Kobo] Global chain sync notice:', e);
+      } finally {
+        inFlight = false;
       }
     };
 
+    // Expose the runner so BroadcastChannel / SSE hints can trigger an immediate
+    // authoritative refetch instead of writing their own (per-instance) optimistic state.
+    chainSyncRef.current = { run: () => { fetchGlobalSync(); } };
+
     fetchGlobalSync();
-    // Poll every 30s for new tokens and price updates (on-chain reads are heavier than DB polls)
-    const interval = setInterval(fetchGlobalSync, 30000);
+    // Poll every 15s so newly-mined tokens and trades surface for everyone quickly.
+    const interval = setInterval(fetchGlobalSync, 15000);
     return () => {
       isMounted = false;
       clearInterval(interval);
+      chainSyncRef.current = null;
     };
   }, []);
 
   const connectRealWeb3Wallet = async (): Promise<string> => {
-    if (typeof window !== 'undefined' && (window as any).ethereum) {
-      try {
-        const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
-        if (accounts && accounts[0]) {
-          const selected = accounts[0];
-          setWalletAddress(selected);
-          localStorage.setItem('kobo_wallet', selected);
-
-          try {
-            await (window as any).ethereum.request({
-              method: 'wallet_switchEthereumChain',
-              params: [{ chainId: '0x4cef52' }],
-            });
-          } catch (switchErr: any) {
-            if (switchErr.code === 4902) {
-              await (window as any).ethereum.request({
-                method: 'wallet_addEthereumChain',
-                params: [{
-                  chainId: '0x4cef52',
-                  chainName: 'Arc Testnet',
-                  // Native gas token is USDC (18 decimals internally) per Arc docs
-                  nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
-                  rpcUrls: [
-                    'https://rpc.testnet.arc.io',            // Primary (Circle)
-                    'https://rpc.blockdaemon.testnet.arc.io', // Blockdaemon
-                    'https://rpc.drpc.testnet.arc.io',        // dRPC
-                    'https://rpc.quicknode.testnet.arc.io'    // QuickNode
-                  ],
-                  blockExplorerUrls: ['https://testnet.arcscan.app']
-                }]
-              });
-            }
-          }
-          return selected;
-        }
-      } catch (err: any) {
-        console.error("Web3 wallet connection failed:", err);
-      }
+    // A REAL wallet is mandatory: trades, launches and fees are all executed by the
+    // user's own address on-chain. A simulated address would only create phantom
+    // state that no other account could ever see — so we refuse rather than fake it.
+    if (typeof window === 'undefined' || !(window as any).ethereum) {
+      throw new Error("No Web3 wallet detected. Please install MetaMask or another wallet and connect to Arc Testnet.");
     }
-    const simulatedAddr = `0x${Math.random().toString(16).substring(2, 10)}...${Math.random().toString(16).substring(2, 6)}`;
-    setWalletAddress(simulatedAddr);
-    localStorage.setItem('kobo_wallet', simulatedAddr);
-    return simulatedAddr;
+
+    try {
+      const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+      if (!accounts || !accounts[0]) {
+        throw new Error("Wallet connection was cancelled or returned no account.");
+      }
+      const selected = accounts[0];
+      setWalletAddress(selected);
+      localStorage.setItem('kobo_wallet', selected);
+
+      try {
+        await (window as any).ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: '0x4cef52' }],
+        });
+      } catch (switchErr: any) {
+        if (switchErr.code === 4902) {
+          await (window as any).ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: '0x4cef52',
+              chainName: 'Arc Testnet',
+              // Native gas token is USDC (18 decimals internally) per Arc docs
+              nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
+              rpcUrls: [
+                'https://rpc.testnet.arc.io',            // Primary (Circle)
+                'https://rpc.blockdaemon.testnet.arc.io', // Blockdaemon
+                'https://rpc.drpc.testnet.arc.io',        // dRPC
+                'https://rpc.quicknode.testnet.arc.io'    // QuickNode
+              ],
+              blockExplorerUrls: ['https://testnet.arcscan.app']
+            }]
+          });
+        }
+      }
+      return selected;
+    } catch (err: any) {
+      console.error("Web3 wallet connection failed:", err);
+      throw new Error(err?.shortMessage || err?.message || "Failed to connect Web3 wallet.");
+    }
   };
 
   const login = async (address?: string) => {
@@ -545,8 +442,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     customCurve?: string,
     txHash?: string
   ): TokenItem => {
-    const tokenAddr = customAddress || `0x${Math.random().toString(16).substring(2, 42)}`;
-    const curveAddr = customCurve || `0x${Math.random().toString(16).substring(2, 42)}`;
+    // A token only exists if it was actually deployed on-chain. Without the real
+    // TokenFactory addresses there is nothing for other users to discover via
+    // TokenLaunched events — so we refuse to fabricate a phantom address.
+    if (!customAddress || !customCurve) {
+      throw new Error("Token launch requires a confirmed on-chain deployment. No wallet transaction was completed.");
+    }
+    const tokenAddr = customAddress;
+    const curveAddr = customCurve;
 
     const newToken: TokenItem = {
       address: tokenAddr,
@@ -554,28 +457,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name,
       symbol: symbol.toUpperCase(),
       metadata_uri: imageUrl || "/jollof.png",
-      creator_wallet: walletAddress ? `${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}` : "0xUser...1234",
+      // Store the FULL creator address so it matches the on-chain event's creator
+      // field once the chain sync overwrites this optimistic entry.
+      creator_wallet: walletAddress || tokenAddr,
       migrated: false,
       raisedCngn: 0,
       description
     };
 
+    // Optimistic local insert so the creator sees their token instantly; the 15s
+    // chain sync will replace this with the authoritative on-chain record.
     setTokens(prev => {
+      if (prev.some(t => t.address.toLowerCase() === tokenAddr.toLowerCase())) return prev;
       const next = [newToken, ...prev];
       localStorage.setItem('kobo_tokens', JSON.stringify(next));
       return next;
     });
 
     setTradesMap(prev => {
+      if (prev[tokenAddr.toLowerCase()]) return prev;
       const next = { ...prev, [tokenAddr.toLowerCase()]: [] };
       localStorage.setItem('kobo_trades', JSON.stringify(next));
       return next;
     });
 
-    // Instant cross-tab broadcast so other accounts see new token immediately
+    // Instant same-browser hint → other tabs pull fresh chain state.
     broadcastRef.current?.postMessage({ type: 'LAUNCH', payload: { token: newToken } });
 
-    // Direct Supabase Browser SDK Write
+    // Off-chain metadata enrichment (image + description) — the token itself is
+    // discovered on-chain, this only supplies what the event can't carry cheaply.
     try {
       const supabase = createSupabaseClient();
       supabase.from('tokens').upsert({
@@ -594,14 +504,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn("Supabase launch token direct write notice:", e);
     }
 
-    // Post new token to backend API for cross-device sync
-    const backendUrl = getBackendUrl();
-    fetch(`${backendUrl}/api/tokens`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newToken)
-    }).catch(err => console.warn("Backend token sync notice:", err));
-
     return newToken;
   };
 
@@ -610,35 +512,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = tokens.find(t => t.address.toLowerCase() === addrLower);
     const raised = token?.raisedCngn || 0;
 
-    let realTxHash: string | undefined;
-    let onChainTokensOut: number | undefined;
-
-    // Execute real EVM transaction on Arc Testnet if wallet connected
-    if (typeof window !== 'undefined' && (window as any).ethereum && token?.curve_address) {
-      const res = await buyTokenOnChain(token.curve_address, cngnAmount);
-      realTxHash = res.txHash;
-      if (res.tokensOut > 0) onChainTokensOut = res.tokensOut;
+    // A trade must be a real on-chain swap — otherwise it is invisible to every
+    // other user (the chain sync is the single source of truth). Refuse to
+    // fabricate an off-chain "simulated" fill.
+    if (typeof window === 'undefined' || !(window as any).ethereum) {
+      throw new Error("No Web3 wallet detected. Connect a wallet on Arc Testnet to trade.");
+    }
+    if (!token?.curve_address) {
+      throw new Error("This token has no on-chain bonding curve to trade against.");
+    }
+    if (!walletAddress) {
+      throw new Error("Wallet not connected.");
     }
 
-    const virtualCngn = 10000 + raised;
-    const virtualToken = (10000 * 1000000000) / virtualCngn;
+    const res = await buyTokenOnChain(token.curve_address, cngnAmount);
+    const realTxHash = res.txHash;
+    const onChainTokensOut = res.tokensOut > 0 ? res.tokensOut : undefined;
+
+    const virtualCngn = INITIAL_VIRTUAL_CNGN + raised;
+    const virtualToken = (INITIAL_VIRTUAL_CNGN * INITIAL_VIRTUAL_TOKENS) / virtualCngn;
     const { tokensOut, priceImpactPercent } = quoteBuy(cngnAmount, virtualCngn, virtualToken);
 
     const finalTokensOut = onChainTokensOut || tokensOut;
     const newRaised = raised + cngnAmount;
-    const isMigrated = (token?.migrated || false) || newRaised >= 50000;
+    const isMigrated = (token?.migrated || false) || newRaised >= MIGRATION_TARGET_CNGN;
     const executionPrice = (virtualCngn + cngnAmount) / (virtualToken - finalTokensOut);
 
     const newTrade: TradeItem = {
       id: `${Date.now()}-${Math.random().toString(16).substring(2, 6)}`,
       token_address: tokenAddress,
-      trader_wallet: walletAddress || '0xUser...48f2',
+      trader_wallet: walletAddress,
       side: 'buy',
       cngn_amount: cngnAmount,
       token_amount: Math.round(finalTokensOut),
       price: executionPrice,
       timestamp: Date.now(),
-      tx_hash: realTxHash || `0x${Math.random().toString(16).substring(2, 42)}`
+      tx_hash: realTxHash
     };
 
     setCngnBalance(prev => {
@@ -686,12 +595,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Direct Supabase Browser SDK Write
+    // Off-chain enrichment mirror only — the trade is authoritative on-chain via
+    // the Trade event; this row just speeds up the UI before the next sync.
     try {
       const supabase = createSupabaseClient();
       supabase.from('trades').upsert({
         token_address: tokenAddress.toLowerCase(),
-        trader_wallet: walletAddress || '0xUser...48f2',
+        trader_wallet: walletAddress,
         side: 'buy',
         cngn_amount: cngnAmount,
         token_amount: Math.round(finalTokensOut),
@@ -708,25 +618,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn("Supabase buy trade direct write notice:", e);
     }
 
-    // Post trade to backend API for cross-device sync
-    const backendUrl = getBackendUrl();
-    fetch(`${backendUrl}/api/trades`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tokenAddress,
-        tokenName: token?.name,
-        tokenSymbol: token?.symbol,
-        traderWallet: walletAddress || '0xUser...48f2',
-        side: 'buy',
-        cngnAmount,
-        tokenAmount: Math.round(finalTokensOut),
-        price: executionPrice,
-        txHash: newTrade.tx_hash
-      })
-    }).catch(err => console.warn("Backend trade sync notice:", err));
-
-    // Refresh on-chain reserves after real EVM buy to correct raisedCngn from contract state
+    // Reconcile raisedCngn/migrated from authoritative on-chain reserves.
     if (realTxHash && token?.curve_address) {
       refreshTokenReserves(token.curve_address).then(reserves => {
         if (!reserves) return;
@@ -749,18 +641,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = tokens.find(t => t.address.toLowerCase() === addrLower);
     const raised = token?.raisedCngn || 0;
 
-    let realTxHash: string | undefined;
-    let onChainCngnOut: number | undefined;
-
-    // Execute real EVM transaction on Arc Testnet if wallet connected
-    if (typeof window !== 'undefined' && (window as any).ethereum && token?.curve_address) {
-      const res = await sellTokenOnChain(token.address, token.curve_address, tokenAmount);
-      realTxHash = res.txHash;
-      if (res.cngnOut > 0) onChainCngnOut = res.cngnOut;
+    // Sells must settle on-chain too — a simulated sell would desync this account
+    // from the shared chain state that every other user reads.
+    if (typeof window === 'undefined' || !(window as any).ethereum) {
+      throw new Error("No Web3 wallet detected. Connect a wallet on Arc Testnet to trade.");
+    }
+    if (!token?.curve_address) {
+      throw new Error("This token has no on-chain bonding curve to trade against.");
+    }
+    if (!walletAddress) {
+      throw new Error("Wallet not connected.");
     }
 
-    const virtualCngn = 10000 + raised;
-    const virtualToken = (10000 * 1000000000) / virtualCngn;
+    const res = await sellTokenOnChain(token.address, token.curve_address, tokenAmount);
+    const realTxHash = res.txHash;
+    const onChainCngnOut = res.cngnOut > 0 ? res.cngnOut : undefined;
+
+    const virtualCngn = INITIAL_VIRTUAL_CNGN + raised;
+    const virtualToken = (INITIAL_VIRTUAL_CNGN * INITIAL_VIRTUAL_TOKENS) / virtualCngn;
     const { cngnOut, priceImpactPercent } = quoteSell(tokenAmount, virtualCngn, virtualToken);
 
     const finalCngnOut = onChainCngnOut || cngnOut;
@@ -770,13 +668,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const newTrade: TradeItem = {
       id: `${Date.now()}-${Math.random().toString(16).substring(2, 6)}`,
       token_address: tokenAddress,
-      trader_wallet: walletAddress || '0xUser...48f2',
+      trader_wallet: walletAddress,
       side: 'sell',
       cngn_amount: Number(finalCngnOut.toFixed(2)),
       token_amount: tokenAmount,
       price: executionPrice,
       timestamp: Date.now(),
-      tx_hash: realTxHash || `0x${Math.random().toString(16).substring(2, 42)}`
+      tx_hash: realTxHash
     };
 
     setCngnBalance(prev => {
@@ -823,14 +721,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Direct Supabase Browser SDK Write
+    // Off-chain enrichment mirror only — authoritative record is the Trade event.
     try {
       const supabase = createSupabaseClient();
       supabase.from('trades').upsert({
         token_address: tokenAddress.toLowerCase(),
-        trader_wallet: walletAddress || '0xUser...48f2',
+        trader_wallet: walletAddress,
         side: 'sell',
-        cngn_amount: Number(cngnOut.toFixed(2)),
+        cngn_amount: Number(finalCngnOut.toFixed(2)),
         token_amount: tokenAmount,
         price: executionPrice,
         tx_hash: newTrade.tx_hash,
@@ -844,25 +742,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn("Supabase sell trade direct write notice:", e);
     }
 
-    // Post trade to backend API for cross-device sync
-    const backendUrl = getBackendUrl();
-    fetch(`${backendUrl}/api/trades`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tokenAddress,
-        tokenName: token?.name,
-        tokenSymbol: token?.symbol,
-        traderWallet: walletAddress || '0xUser...48f2',
-        side: 'sell',
-        cngnAmount: Number(finalCngnOut.toFixed(2)),
-        tokenAmount,
-        price: executionPrice,
-        txHash: newTrade.tx_hash
-      })
-    }).catch(err => console.warn("Backend trade sync notice:", err));
-
-    // Refresh on-chain reserves after real EVM sell to correct raisedCngn from contract state
+    // Reconcile raisedCngn/migrated from authoritative on-chain reserves.
     if (realTxHash && token?.curve_address) {
       refreshTokenReserves(token.curve_address).then(reserves => {
         if (!reserves) return;

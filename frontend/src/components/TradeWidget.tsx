@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ArrowDownUp, RefreshCw, Sparkles, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { quoteBuy, quoteSell } from '@/lib/metrics';
+import { quoteBuy, quoteSell, INITIAL_VIRTUAL_CNGN, INITIAL_VIRTUAL_TOKENS } from '@/lib/metrics';
 
 interface TradeWidgetProps {
   tokenAddress: string;
@@ -32,9 +32,10 @@ export default function TradeWidget({
 
   const numAmount = parseFloat(amount) || 0;
 
-  // Real bonding curve quote calculation
-  const virtualCngn = 10000 + Math.max(0, raisedCngn);
-  const virtualToken = (10000 * 1000000000) / virtualCngn;
+  // Real bonding curve quote calculation — reserves derived from the on-chain
+  // constant-product seed (must match TokenFactory.VIRTUAL_CNGN_RESERVE).
+  const virtualCngn = INITIAL_VIRTUAL_CNGN + Math.max(0, raisedCngn);
+  const virtualToken = (INITIAL_VIRTUAL_CNGN * INITIAL_VIRTUAL_TOKENS) / virtualCngn;
 
   let estimatedTokensOut = 0;
   let estimatedCngnOut = 0;
