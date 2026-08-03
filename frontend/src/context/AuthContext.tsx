@@ -197,12 +197,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const chainTokens = await getAllTokensFromChain();
         if (!isMounted) return;
 
-        // The chain is authoritative: adopt exactly what the registry returns. If it's
-        // empty, there genuinely are no tokens (no `length > 0` guard needed — a real
-        // launch is always in allTokens[] once its tx is mined).
-        const merged: TokenItem[] = chainTokens.map(mapChainToken);
-        setTokens(merged);
-        localStorage.setItem('kobo_tokens', JSON.stringify(merged));
+        // Merge on-chain registry tokens with any locally-created optimistic tokens
+        // that haven't been indexed by the RPC block height yet, so new tokens never vanish.
+        let mergedTokens: TokenItem[] = [];
+        setTokens(prev => {
+          const chainAddrs = new Set(chainTokens.map(t => t.address.toLowerCase()));
+          const fromChain = chainTokens.map(mapChainToken);
+          // Preserve local tokens that are not yet returned by on-chain enumerator
+          const localOnly = prev.filter(p => !chainAddrs.has(p.address.toLowerCase()));
+
+          mergedTokens = [...fromChain, ...localOnly];
+          localStorage.setItem('kobo_tokens', JSON.stringify(mergedTokens));
+          return mergedTokens;
+        });
 
         // Resolve the current head once; every curve tail scans up to this block.
         let latestBlock = 0;
@@ -215,10 +222,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Seed each curve's cursor at first observation so we only ever tail the new
         // range. Merge fresh trades into the existing map, de-duping by tx composite key.
         const CONCURRENCY = 3;
-        for (let i = 0; i < merged.length; i += CONCURRENCY) {
-          const batch = merged.slice(i, i + CONCURRENCY);
+        for (let i = 0; i < mergedTokens.length; i += CONCURRENCY) {
+          const batch = mergedTokens.slice(i, i + CONCURRENCY);
           const batchResults = await Promise.all(
-            batch.map(async tk => {
+            batch.map(async (tk: TokenItem) => {
               const addrLower = tk.address.toLowerCase();
               const curveLower = (tk.curve_address || '').toLowerCase();
               if (!curveLower) return [addrLower, [] as TradeItem[]] as const;
@@ -251,8 +258,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             for (const [addr, items] of batchResults) {
               if (items.length === 0) { if (!next[addr]) next[addr] = next[addr] || (prev[addr] || []); continue; }
               const existing = next[addr] || prev[addr] || [];
-              const seen = new Set(existing.map(t => `${t.tx_hash}:${t.side}:${t.cngn_amount}:${t.token_amount}`));
-              const additions = items.filter(t => !seen.has(`${t.tx_hash}:${t.side}:${t.cngn_amount}:${t.token_amount}`));
+              const seen = new Set(existing.map((t: TradeItem) => `${t.tx_hash}:${t.side}:${t.cngn_amount}:${t.token_amount}`));
+              const additions = items.filter((t: TradeItem) => !seen.has(`${t.tx_hash}:${t.side}:${t.cngn_amount}:${t.token_amount}`));
               next[addr] = [...additions, ...existing].sort((a, b) => b.timestamp - a.timestamp);
             }
             localStorage.setItem('kobo_trades', JSON.stringify(next));
