@@ -3,14 +3,18 @@ import { DEPLOYED_ADDRESSES } from './contracts';
 
 export const TOKEN_FACTORY_ADDRESS = DEPLOYED_ADDRESSES.tokenFactory;
 export const CNGN_ADDRESS = DEPLOYED_ADDRESSES.mockCNGN;
-export const ARC_TESTNET_CHAIN_ID = "0x4cef52"; // 5042002 in hex (verified: 5042002 = 0x4CEF52)
-export const ARC_RPC_URL = "https://rpc.blockdaemon.testnet.arc.io";
-// Fallback RPCs if the primary is rate-limited or unavailable.
-export const ARC_RPC_FALLBACKS = [
-  "https://rpc.testnet.arc.io",
-  "https://rpc.drpc.testnet.arc.io",
-  "https://rpc.quicknode.testnet.arc.io",
+export const BASE_SEPOLIA_CHAIN_ID = "0x14a34"; // 84532 in hex
+export const CHAIN_RPC_URL = "https://sepolia.base.org";
+export const CHAIN_RPC_FALLBACKS = [
+  "https://base-sepolia.drpc.org",
+  "https://base-sepolia-rpc.publicnode.com",
+  "https://base-sepolia.blockpi.network/v1/rpc/public",
 ];
+
+// Aliases for compatibility
+export const ARC_TESTNET_CHAIN_ID = BASE_SEPOLIA_CHAIN_ID;
+export const ARC_RPC_URL = CHAIN_RPC_URL;
+export const ARC_RPC_FALLBACKS = CHAIN_RPC_FALLBACKS;
 
 export const MULTICALL3_ADDRESS = "0xca11bde05977b3631167028862be2a173976ca11";
 export const MULTICALL3_ABI = [
@@ -78,14 +82,14 @@ export async function ensureArcTestnetNetwork(): Promise<boolean> {
 
   try {
     const currentChainId = await ethereum.request({ method: 'eth_chainId' });
-    if (currentChainId && (currentChainId.toLowerCase() === ARC_TESTNET_CHAIN_ID.toLowerCase() || currentChainId === '0x4cef52')) {
+    if (currentChainId && currentChainId.toLowerCase() === BASE_SEPOLIA_CHAIN_ID.toLowerCase()) {
       return true;
     }
 
     try {
       await ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: ARC_TESTNET_CHAIN_ID }],
+        params: [{ chainId: BASE_SEPOLIA_CHAIN_ID }],
       });
       return true;
     } catch (switchErr: any) {
@@ -93,16 +97,16 @@ export async function ensureArcTestnetNetwork(): Promise<boolean> {
         await ethereum.request({
           method: 'wallet_addEthereumChain',
           params: [{
-            chainId: ARC_TESTNET_CHAIN_ID,
-            chainName: 'Arc Testnet',
-            nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
+            chainId: BASE_SEPOLIA_CHAIN_ID,
+            chainName: 'Base Sepolia',
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
             rpcUrls: [
-              'https://rpc.blockdaemon.testnet.arc.io',
-              'https://rpc.testnet.arc.io',
-              'https://rpc.drpc.testnet.arc.io',
-              'https://rpc.quicknode.testnet.arc.io'
+              'https://sepolia.base.org',
+              'https://base-sepolia.drpc.org',
+              'https://base-sepolia-rpc.publicnode.com',
+              'https://base-sepolia.blockpi.network/v1/rpc/public'
             ],
-            blockExplorerUrls: ['https://testnet.arcscan.app']
+            blockExplorerUrls: ['https://sepolia.basescan.org']
           }]
         });
         return true;
@@ -442,8 +446,8 @@ export interface ChainTradeRecord {
 
 const CALL_PACE_MS = 120;          // sleep between consecutive state reads
 const MAX_PARALLEL_READS = 3;      // never hammer the RPC
-const TRADE_BATCH_BLOCKS = 5_000;  // max window per queryFilter on the tail
-const TRADE_TAIL_LOOKBACK_BLOCKS = 5_000; // safe lookback window on testnet
+const TRADE_BATCH_BLOCKS = 1_800;  // fits within Base Sepolia 2000 max block range limit
+const TRADE_TAIL_LOOKBACK_BLOCKS = 1_800; // safe initial lookback window
 
 // Retry/backoff: Arc returns -32011 (request limit) and -32005 (limit exceeded)
 // when hammered; transient network errors also happen. Retry with exponential

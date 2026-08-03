@@ -335,24 +335,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await (window as any).ethereum.request({
           method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0x4cef52' }],
+          params: [{ chainId: '0x14a34' }],
         });
       } catch (switchErr: any) {
-        if (switchErr.code === 4902) {
+        if (switchErr.code === 4902 || switchErr?.data?.originalError?.code === 4902) {
           await (window as any).ethereum.request({
             method: 'wallet_addEthereumChain',
             params: [{
-              chainId: '0x4cef52',
-              chainName: 'Arc Testnet',
-              // Native gas token is USDC (18 decimals internally) per Arc docs
-              nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
+              chainId: '0x14a34',
+              chainName: 'Base Sepolia',
+              nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
               rpcUrls: [
-                'https://rpc.testnet.arc.io',            // Primary (Circle)
-                'https://rpc.blockdaemon.testnet.arc.io', // Blockdaemon
-                'https://rpc.drpc.testnet.arc.io',        // dRPC
-                'https://rpc.quicknode.testnet.arc.io'    // QuickNode
+                'https://sepolia.base.org',
+                'https://base-sepolia.drpc.org',
+                'https://base-sepolia-rpc.publicnode.com',
+                'https://base-sepolia.blockpi.network/v1/rpc/public'
               ],
-              blockExplorerUrls: ['https://testnet.arcscan.app']
+              blockExplorerUrls: ['https://sepolia.basescan.org']
             }]
           });
         }
