@@ -198,14 +198,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const chainTokens = await getAllTokensFromChain();
         if (!isMounted) return;
 
-        // Merge on-chain registry tokens with any locally-created optimistic tokens
+        // Merge on-chain registry tokens with any recently created optimistic tokens
         // that haven't been indexed by the RPC block height yet, so new tokens never vanish.
         let mergedTokens: TokenItem[] = [];
         setTokens(prev => {
           const chainAddrs = new Set(chainTokens.map(t => t.address.toLowerCase()));
           const fromChain = chainTokens.map(mapChainToken);
-          // Preserve local tokens that are not yet returned by on-chain enumerator
-          const localOnly = prev.filter(p => !chainAddrs.has(p.address.toLowerCase()));
+          
+          // Only preserve local tokens that were created within the last 3 minutes
+          // and marked as optimistic, preventing stale cached tokens from old contract deployments.
+          const now = Date.now();
+          const localOnly = prev.filter(p =>
+            !chainAddrs.has(p.address.toLowerCase()) &&
+            Boolean((p as any).isOptimistic) &&
+            (now - Number((p as any).createdAt || 0)) < 180000
+          );
 
           mergedTokens = [...fromChain, ...localOnly];
           localStorage.setItem('kobo_tokens', JSON.stringify(mergedTokens));
@@ -429,8 +436,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       creator_wallet: walletAddress || tokenAddr,
       migrated: false,
       raisedCngn: 0,
-      description
-    };
+      description,
+      isOptimistic: true,
+      createdAt: Date.now()
+    } as any;
 
     // Optimistic local insert so the creator sees their token instantly; the 15s
     // chain sync will replace this with the authoritative on-chain record.
