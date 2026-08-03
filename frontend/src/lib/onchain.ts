@@ -4,10 +4,10 @@ import { DEPLOYED_ADDRESSES } from './contracts';
 export const TOKEN_FACTORY_ADDRESS = DEPLOYED_ADDRESSES.tokenFactory;
 export const CNGN_ADDRESS = DEPLOYED_ADDRESSES.mockCNGN;
 export const ARC_TESTNET_CHAIN_ID = "0x4cef52"; // 5042002 in hex (verified: 5042002 = 0x4CEF52)
-export const ARC_RPC_URL = "https://rpc.testnet.arc.io";
-// Fallback RPCs if the primary is rate-limited (-32011) or unavailable.
+export const ARC_RPC_URL = "https://rpc.blockdaemon.testnet.arc.io";
+// Fallback RPCs if the primary is rate-limited or unavailable.
 export const ARC_RPC_FALLBACKS = [
-  "https://rpc.blockdaemon.testnet.arc.io",
+  "https://rpc.testnet.arc.io",
   "https://rpc.drpc.testnet.arc.io",
   "https://rpc.quicknode.testnet.arc.io",
 ];
@@ -92,8 +92,8 @@ export async function ensureArcTestnetNetwork(): Promise<boolean> {
             chainName: 'Arc Testnet',
             nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
             rpcUrls: [
-              'https://rpc.testnet.arc.io',
               'https://rpc.blockdaemon.testnet.arc.io',
+              'https://rpc.testnet.arc.io',
               'https://rpc.drpc.testnet.arc.io',
               'https://rpc.quicknode.testnet.arc.io'
             ],

@@ -16,7 +16,7 @@ contract MockCNGN is ERC20, Ownable {
      * @param to Recipient address
      * @param amount cNGN amount in wei (18 decimals)
      */
-    function faucetMint(address to, uint256 amount) external onlyOwner {
+    function faucetMint(address to, uint256 amount) external {
         _mint(to, amount);
     }
 
