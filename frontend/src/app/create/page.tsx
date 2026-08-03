@@ -15,9 +15,8 @@ function normalizeImageUrl(raw: string): string {
   const url = raw.trim();
   if (!url) return '';
 
-  // Already a direct image (ends in an image extension, optionally with query string).
-  if (/\.(png|jpe?g|gif|webp|svg|avif)(\?.*)?$/i.test(url)) return url;
-
+  // Host-specific page → direct-image rewrites run FIRST (before the extension
+  // shortcut) so e.g. a github .../blob/....png page becomes raw content.
   try {
     const u = new URL(url);
     const host = u.hostname.replace(/^www\./, '').toLowerCase();
@@ -37,8 +36,11 @@ function normalizeImageUrl(raw: string): string {
       return `https://raw.githubusercontent.com${u.pathname.replace('/blob/', '/')}`;
     }
   } catch {
-    // not a parseable URL — fall through and return as-is
+    // not a parseable URL — fall through
   }
+
+  // Already a direct image (ends in an image extension, optionally with query string).
+  if (/\.(png|jpe?g|gif|webp|svg|avif)(\?.*)?$/i.test(url)) return url;
 
   return url;
 }
@@ -208,12 +210,12 @@ export default function CreateTokenPage() {
             <label className="block text-xs font-bold text-slate-300">Token Image / Logo URL *</label>
 
             <div className="flex items-start gap-3">
-              {/* Live preview from the pasted URL */}
+              {/* Live preview from the normalized (direct-image) URL */}
               <div className="w-16 h-16 rounded-xl border border-white/15 bg-[#0A0E17] shrink-0 overflow-hidden flex items-center justify-center text-slate-600">
                 {isValidUrl && !imageBroken ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={imageUrl.trim()}
+                    src={normalizedUrl}
                     alt="Preview"
                     className="w-full h-full object-cover"
                     onLoad={() => setImageBroken(false)}
@@ -241,7 +243,12 @@ export default function CreateTokenPage() {
                   </p>
                 ) : isValidUrl && imageBroken ? (
                   <p className="text-[10px] text-rose-400 font-inter">
-                    Couldn't load that image — check the link points directly to an image file.
+                    Couldn&apos;t load that image. Open it in a browser — the link must end in
+                    {' '}.png/.jpg/.gif/.webp. For imgur, use the <span className="font-mono">i.imgur.com/…</span> link (right-click the image → Copy image address).
+                  </p>
+                ) : isValidUrl && wasRewritten ? (
+                  <p className="text-[10px] text-emerald-400 font-inter flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Using direct link <span className="font-mono truncate max-w-[220px]">{normalizedUrl}</span> — stored on-chain.
                   </p>
                 ) : isValidUrl ? (
                   <p className="text-[10px] text-emerald-400 font-inter flex items-center gap-1">
