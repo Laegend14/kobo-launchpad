@@ -198,23 +198,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const chainTokens = await getAllTokensFromChain();
         if (!isMounted) return;
 
-        // Merge on-chain registry tokens with any recently created optimistic tokens
-        // that haven't been indexed by the RPC block height yet, so new tokens never vanish.
+        // Merge on-chain registry tokens safely without ever allowing transient RPC glitches
+        // or empty sync responses to wipe out existing valid tokens from the dashboard.
         let mergedTokens: TokenItem[] = [];
         setTokens(prev => {
+          if (chainTokens.length === 0 && prev.length > 0) {
+            // Keep existing valid tokens intact if RPC sync returns empty
+            return prev;
+          }
+
+          const fromChainMap = new Map(chainTokens.map(t => [t.address.toLowerCase(), mapChainToken(t)]));
           const chainAddrs = new Set(chainTokens.map(t => t.address.toLowerCase()));
-          const fromChain = chainTokens.map(mapChainToken);
-          
-          // Only preserve local tokens that were created within the last 3 minutes
-          // and marked as optimistic, preventing stale cached tokens from old contract deployments.
+
+          // 1. Update existing tokens with fresh chain state (reserves, migration status)
+          const updatedPrev = prev.map(p => {
+            const fresh = fromChainMap.get(p.address.toLowerCase());
+            if (fresh) {
+              fromChainMap.delete(p.address.toLowerCase());
+              return {
+                ...p,
+                ...fresh,
+                description: p.description && !p.description.includes('— launched on Kobo!') ? p.description : fresh.description
+              };
+            }
+            return p;
+          });
+
+          // 2. Add new tokens returned from chain that weren't in prev
+          const newFromChain = Array.from(fromChainMap.values());
+
+          // 3. Keep tokens that exist on chain OR fresh optimistic tokens (<3 mins old)
           const now = Date.now();
-          const localOnly = prev.filter(p =>
-            !chainAddrs.has(p.address.toLowerCase()) &&
-            Boolean((p as any).isOptimistic) &&
-            (now - Number((p as any).createdAt || 0)) < 180000
+          const validPrev = updatedPrev.filter(p =>
+            chainAddrs.has(p.address.toLowerCase()) ||
+            (Boolean((p as any).isOptimistic) && (now - Number((p as any).createdAt || 0)) < 180000)
           );
 
-          mergedTokens = [...fromChain, ...localOnly];
+          mergedTokens = [...validPrev, ...newFromChain];
           localStorage.setItem('kobo_tokens', JSON.stringify(mergedTokens));
           return mergedTokens;
         });
