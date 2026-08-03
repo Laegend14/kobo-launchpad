@@ -7,6 +7,42 @@ import { useAuth } from '../../context/AuthContext';
 
 import { launchTokenOnChain } from '@/lib/onchain';
 
+// Turn a pasted page URL into a *direct image* URL where we can. The <img> tag (and
+// the token card everywhere else) can only render a link that returns image bytes —
+// an imgur gallery page (https://imgur.com/AbC123) returns HTML, not an image, so it
+// must become https://i.imgur.com/AbC123.png. Handles the links people actually paste.
+function normalizeImageUrl(raw: string): string {
+  const url = raw.trim();
+  if (!url) return '';
+
+  // Already a direct image (ends in an image extension, optionally with query string).
+  if (/\.(png|jpe?g|gif|webp|svg|avif)(\?.*)?$/i.test(url)) return url;
+
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+
+    // imgur: single-image page or /gallery/ or /a/ → direct i.imgur.com/<id>.png
+    if (host === 'imgur.com' || host === 'm.imgur.com') {
+      const id = u.pathname.replace(/^\/(gallery|a)\//, '/').replace(/^\//, '').split('/')[0];
+      if (id) return `https://i.imgur.com/${id}.png`;
+    }
+    // i.imgur.com without an extension → append .png
+    if (host === 'i.imgur.com') {
+      const id = u.pathname.replace(/^\//, '').split('.')[0];
+      if (id) return `https://i.imgur.com/${id}.png`;
+    }
+    // GitHub blob page → raw content
+    if (host === 'github.com' && u.pathname.includes('/blob/')) {
+      return `https://raw.githubusercontent.com${u.pathname.replace('/blob/', '/')}`;
+    }
+  } catch {
+    // not a parseable URL — fall through and return as-is
+  }
+
+  return url;
+}
+
 export default function CreateTokenPage() {
   const router = useRouter();
   const { isLoggedIn, login, launchToken } = useAuth();
@@ -22,7 +58,10 @@ export default function CreateTokenPage() {
 
   // A valid on-chain image is a plain http(s) URL. Base64 data: URIs are rejected —
   // they'd blow past EVM calldata limits, so the token's metadataURI must be a link.
-  const isValidUrl = /^https?:\/\/[^\s]+$/i.test(imageUrl.trim());
+  // We normalize first so pasting an imgur/github *page* URL still resolves to an image.
+  const normalizedUrl = normalizeImageUrl(imageUrl);
+  const isValidUrl = /^https?:\/\/[^\s]+$/i.test(normalizedUrl);
+  const wasRewritten = normalizedUrl !== imageUrl.trim() && imageUrl.trim().length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,13 +74,17 @@ export default function CreateTokenPage() {
     setIsDeploying(true);
     setDeployError(null);
 
+    // Persist the normalized (direct-image) URL on-chain, not the raw page URL the
+    // user may have pasted — so the token image renders on every account.
+    const finalImageUrl = normalizedUrl;
+
     let onChainAddress: string | undefined;
     let onChainCurve: string | undefined;
     let onChainTxHash: string | undefined;
 
     if (typeof window !== 'undefined' && (window as any).ethereum) {
       try {
-        const onChainRes = await launchTokenOnChain(name, symbol, imageUrl.trim());
+        const onChainRes = await launchTokenOnChain(name, symbol, finalImageUrl);
         onChainAddress = onChainRes.tokenAddress;
         onChainCurve = onChainRes.curveAddress;
         onChainTxHash = onChainRes.txHash;
@@ -55,7 +98,7 @@ export default function CreateTokenPage() {
       await new Promise(res => setTimeout(res, 800));
     }
 
-    const newToken = launchToken(name, symbol, description, imageUrl.trim(), onChainAddress, onChainCurve, onChainTxHash);
+    const newToken = launchToken(name, symbol, description, finalImageUrl, onChainAddress, onChainCurve, onChainTxHash);
     setIsDeploying(false);
     setSuccessToken(newToken);
 
