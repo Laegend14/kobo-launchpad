@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Rocket, Sparkles, UploadCloud, Info, CheckCircle2, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { Rocket, Sparkles, Info, CheckCircle2, RefreshCw, ArrowUpRight, ImageIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 import { launchTokenOnChain } from '@/lib/onchain';
@@ -10,49 +10,19 @@ import { launchTokenOnChain } from '@/lib/onchain';
 export default function CreateTokenPage() {
   const router = useRouter();
   const { isLoggedIn, login, launchToken } = useAuth();
-  
+
   const [name, setName] = useState('');
   const [symbol, setSymbol] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploadMode, setUploadMode] = useState<'drag' | 'url'>('drag');
+  const [imageBroken, setImageBroken] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployError, setDeployError] = useState<string | null>(null);
   const [successToken, setSuccessToken] = useState<any>(null);
 
-  const handleFile = (file: File) => {
-    if (!file || !file.type.startsWith('image/')) {
-      alert('Please upload a valid image file (PNG, JPG, WEBP, GIF, SVG).');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setImageUrl(result);
-      setImagePreview(result);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
+  // A valid on-chain image is a plain http(s) URL. Base64 data: URIs are rejected —
+  // they'd blow past EVM calldata limits, so the token's metadataURI must be a link.
+  const isValidUrl = /^https?:\/\/[^\s]+$/i.test(imageUrl.trim());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,7 +41,7 @@ export default function CreateTokenPage() {
 
     if (typeof window !== 'undefined' && (window as any).ethereum) {
       try {
-        const onChainRes = await launchTokenOnChain(name, symbol, imageUrl);
+        const onChainRes = await launchTokenOnChain(name, symbol, imageUrl.trim());
         onChainAddress = onChainRes.tokenAddress;
         onChainCurve = onChainRes.curveAddress;
         onChainTxHash = onChainRes.txHash;
@@ -85,14 +55,13 @@ export default function CreateTokenPage() {
       await new Promise(res => setTimeout(res, 800));
     }
 
-    const newToken = launchToken(name, symbol, description, imageUrl, onChainAddress, onChainCurve, onChainTxHash);
+    const newToken = launchToken(name, symbol, description, imageUrl.trim(), onChainAddress, onChainCurve, onChainTxHash);
     setIsDeploying(false);
     setSuccessToken(newToken);
 
-    // Off-chain metadata (description + image) is persisted to the backend file store
-    // by launchToken() above via POST /api/metadata — the indexer then merges it onto
-    // every client's token record. Nothing else to write here; the token itself is
-    // discovered on-chain by the backend indexer.
+    // The image URL is stored ON-CHAIN in the factory's tokenMetadataURI at launch and
+    // read back by every client via getAllTokensFromChain — no backend, no upload host,
+    // no database. That's what makes the token (and its image) visible to every account.
 
     setTimeout(() => {
       router.push(`/token/${newToken.address}`);
@@ -191,114 +160,57 @@ export default function CreateTokenPage() {
             </div>
           </div>
 
-          {/* Token Image Aspect (Drag and Drop + URL option) */}
+          {/* Token Image — pasted URL stored on-chain in metadataURI */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-slate-300">Token Image / Logo *</label>
-              <div className="flex space-x-1.5 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => setUploadMode('drag')}
-                  className={`px-2.5 py-0.5 rounded-lg transition-all ${
-                    uploadMode === 'drag'
-                      ? 'bg-emerald-500/20 text-[#00E676] font-bold border border-emerald-500/30'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Drag & Drop File
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUploadMode('url')}
-                  className={`px-2.5 py-0.5 rounded-lg transition-all ${
-                    uploadMode === 'url'
-                      ? 'bg-emerald-500/20 text-[#00E676] font-bold border border-emerald-500/30'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Image URL
-                </button>
-              </div>
-            </div>
+            <label className="block text-xs font-bold text-slate-300">Token Image / Logo URL *</label>
 
-            {uploadMode === 'drag' ? (
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`relative border-2 border-dashed rounded-2xl p-5 text-center transition-all cursor-pointer ${
-                  isDragging
-                    ? 'border-emerald-500 bg-emerald-500/15 scale-[1.01]'
-                    : imagePreview || imageUrl
-                    ? 'border-emerald-500/40 bg-[#0A0E17]'
-                    : 'border-white/15 bg-[#0A0E17] hover:border-emerald-500/50 hover:bg-emerald-500/5'
-                }`}
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleFile(e.target.files[0]);
-                    }
-                  }}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                />
-
-                {imagePreview || (imageUrl && imageUrl.startsWith('data:')) ? (
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center space-x-3 text-left">
-                      <img
-                        src={imagePreview || imageUrl}
-                        alt="Preview"
-                        className="w-16 h-16 rounded-xl object-cover border border-white/20 shadow-md shrink-0"
-                      />
-                      <div>
-                        <span className="text-xs font-bold text-white block flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-[#00E676]" /> Image Attached
-                        </span>
-                        <span className="text-[10px] text-slate-400 block font-inter">Click or drag another image to replace</span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setImageUrl('');
-                        setImagePreview(null);
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-bold border border-rose-500/30 transition-all z-20"
-                    >
-                      Remove
-                    </button>
-                  </div>
+            <div className="flex items-start gap-3">
+              {/* Live preview from the pasted URL */}
+              <div className="w-16 h-16 rounded-xl border border-white/15 bg-[#0A0E17] shrink-0 overflow-hidden flex items-center justify-center text-slate-600">
+                {isValidUrl && !imageBroken ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imageUrl.trim()}
+                    alt="Preview"
+                    className="w-full h-full object-cover"
+                    onLoad={() => setImageBroken(false)}
+                    onError={() => setImageBroken(true)}
+                  />
                 ) : (
-                  <div className="space-y-2 py-2">
-                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-emerald-400">
-                      <UploadCloud className="w-5 h-5" />
-                    </div>
-                    <p className="text-xs text-white font-medium">
-                      Drag & drop your memecoin logo here, or <span className="text-[#00E676] underline">browse file</span>
-                    </p>
-                    <p className="text-[10px] text-slate-500 font-inter">Supports PNG, JPG, WEBP, GIF or SVG (Max 5MB)</p>
-                  </div>
+                  <ImageIcon className="w-6 h-6" />
                 )}
               </div>
-            ) : (
-              <div className="relative">
+
+              <div className="flex-1 space-y-1">
                 <input
                   type="url"
                   value={imageUrl}
                   onChange={(e) => {
                     setImageUrl(e.target.value);
-                    setImagePreview(e.target.value);
+                    setImageBroken(false);
                   }}
-                  placeholder="https://images.unsplash.com/photo-..."
-                  className="w-full py-2.5 pl-3.5 pr-10 rounded-xl bg-[#0A0E17] border border-white/10 text-white text-sm outline-none focus:border-emerald-500 transition-colors"
+                  placeholder="https://i.imgur.com/yourlogo.png"
+                  className="w-full py-2.5 px-3.5 rounded-xl bg-[#0A0E17] border border-white/10 text-white text-sm outline-none focus:border-emerald-500 transition-colors"
                 />
-                <UploadCloud className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+                {imageUrl.trim() && !isValidUrl ? (
+                  <p className="text-[10px] text-amber-400 font-inter">
+                    Paste a direct <span className="font-mono">https://</span> link to a PNG/JPG/WEBP/GIF/SVG image.
+                  </p>
+                ) : isValidUrl && imageBroken ? (
+                  <p className="text-[10px] text-rose-400 font-inter">
+                    Couldn't load that image — check the link points directly to an image file.
+                  </p>
+                ) : isValidUrl ? (
+                  <p className="text-[10px] text-emerald-400 font-inter flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Image loads — this URL is stored on-chain so every account sees it.
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-slate-500 font-inter">
+                    Host your logo (imgur, Unsplash, IPFS gateway, etc.) and paste the direct image link.
+                  </p>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           <div>

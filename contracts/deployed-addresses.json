@@ -1,14 +1,14 @@
 {
   "network": "arcTestnet",
   "chainId": "5042002",
-  "cngnAddress": "0x21c494f10E7a10C1792D0Ba68bC8b8cFC6E554C7",
-  "factoryAddress": "0xc6F6eA8701Bb27aAf756b83B5948E540f3401CE2",
-  "routerAddress": "0x474c3422E93830cdE64c85AE842150497e8216D8",
-  "tokenFactoryAddress": "0x4Ca9A69ff8dBF37819d21DB37260142416796D72",
+  "cngnAddress": "0x6B578aEfc9d9663327a8a677FFe07f272849f300",
+  "factoryAddress": "0x7d715a64F4360305bCe47Db5472C74eB0F674c83",
+  "routerAddress": "0x319bAd3efBC728eB4B432734C43bE2535992546a",
+  "tokenFactoryAddress": "0x467816F896E03919300431e23CB9136a6e26a48B",
   "sampleToken": {
-    "address": "0x54Dc524dC245E7bCD39ca9d6F6Fd4A04A1130cE2",
-    "curveAddress": "0x864c5F6a8EC74eC2e744599F1b31EDbA02fF1532",
+    "address": "0x05eC70a7e2245B733f5fbfDA93a5C0D18960a320",
+    "curveAddress": "0xe347afB5cd6682439815503CCF403dB05f3ACBcf",
     "symbol": "JOFF"
   },
-  "deployedAt": "2026-08-02T20:11:49.331Z"
+  "deployedAt": "2026-08-02T22:59:11.194Z"
 }

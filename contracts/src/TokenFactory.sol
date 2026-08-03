@@ -20,6 +20,9 @@ contract TokenFactory is Ownable {
     address[] public allTokens;
     mapping(address => address) public tokenToCurve;
     mapping(address => bool) public isLaunchedToken;
+    // On-chain metadata URI (image URL) per token — read directly by clients so token
+    // discovery + image never depend on any off-chain indexer or database.
+    mapping(address => string) public tokenMetadataURI;
 
     event TokenLaunched(
         address indexed token,
@@ -73,6 +76,7 @@ contract TokenFactory is Ownable {
         allTokens.push(token);
         tokenToCurve[token] = curve;
         isLaunchedToken[token] = true;
+        tokenMetadataURI[token] = metadataURI;
 
         emit TokenLaunched(token, curve, name, symbol, metadataURI, msg.sender, block.timestamp);
     }

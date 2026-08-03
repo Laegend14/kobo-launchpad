@@ -101,7 +101,8 @@ export const TOKEN_FACTORY_ABI = [
   "function launchToken(string name, string symbol, string metadataURI) external returns (address token, address curve)",
   "function getAllTokensCount() external view returns (uint256)",
   "function allTokens(uint256 index) external view returns (address)",
-  "function tokenToCurve(address token) external view returns (address)"
+  "function tokenToCurve(address token) external view returns (address)",
+  "function tokenMetadataURI(address token) external view returns (string)"
 ];
 
 export const BONDING_CURVE_ABI = [

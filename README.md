@@ -29,10 +29,10 @@ When a launched token raises **50,000 cNGN**, its smart contract automatically l
 
 | Contract | Address | Explorer |
 | :--- | :--- | :--- |
-| **cNGN Stablecoin (Mock)** | `0x21c494f10E7a10C1792D0Ba68bC8b8cFC6E554C7` | [View on ArcScan](https://testnet.arcscan.app/address/0x21c494f10E7a10C1792D0Ba68bC8b8cFC6E554C7) |
-| **Token Factory** | `0x4Ca9A69ff8dBF37819d21DB37260142416796D72` | [View on ArcScan](https://testnet.arcscan.app/address/0x4Ca9A69ff8dBF37819d21DB37260142416796D72) |
-| **Migration Router** | `0x474c3422E93830cdE64c85AE842150497e8216D8` | [View on ArcScan](https://testnet.arcscan.app/address/0x474c3422E93830cdE64c85AE842150497e8216D8) |
-| **Featured Token ($JOFF)** | `0x54Dc524dC245E7bCD39ca9d6F6Fd4A04A1130cE2` | [View on ArcScan](https://testnet.arcscan.app/address/0x54Dc524dC245E7bCD39ca9d6F6Fd4A04A1130cE2) |
+| **cNGN Stablecoin (Mock)** | `0x6B578aEfc9d9663327a8a677FFe07f272849f300` | [View on ArcScan](https://testnet.arcscan.app/address/0x6B578aEfc9d9663327a8a677FFe07f272849f300) |
+| **Token Factory** | `0x467816F896E03919300431e23CB9136a6e26a48B` | [View on ArcScan](https://testnet.arcscan.app/address/0x467816F896E03919300431e23CB9136a6e26a48B) |
+| **Migration Router** | `0x319bAd3efBC728eB4B432734C43bE2535992546a` | [View on ArcScan](https://testnet.arcscan.app/address/0x319bAd3efBC728eB4B432734C43bE2535992546a) |
+| **Featured Token ($JOFF)** | `0x05eC70a7e2245B733f5fbfDA93a5C0D18960a320` | [View on ArcScan](https://testnet.arcscan.app/address/0x05eC70a7e2245B733f5fbfDA93a5C0D18960a320) |
 
 ---
 
@@ -43,35 +43,38 @@ kobo-launchpad/
 ├── contracts/       # Hardhat TypeScript Smart Contracts & Unit Tests
 │   ├── src/         # BondingCurve.sol, TokenFactory.sol, MigrationRouter.sol
 │   └── test/        # Bonding curve & DEX migration integration tests
-├── backend/         # Node.js Express API + continuous on-chain indexer
-│   └── src/         # indexer.ts (shared read layer), server.ts, fiat ramp adapter
 └── frontend/        # Next.js 14 App Router, Tailwind CSS & Real-Time Metrics
-    ├── public/      # Brand assets & favicons
     └── src/         # Components, Pages & Metrics Math Engine
 ```
 
 ---
 
-## 🔄 State Synchronization (Why every account sees the same tokens & trades)
+## 🔄 State Synchronization — 100% On-Chain, Zero Infrastructure
 
-KOBO has **no application database** — the blockchain is the single source of truth. A
-lightweight backend **indexer** (`backend/src/indexer.ts`) is the one shared read layer:
+KOBO has **no backend, no database, and no application server.** The Arc blockchain is the
+single source of truth, and **every browser reads the same chain state directly** — that is
+what makes a memecoin created on account A appear on account B within one sync interval.
 
-- It reads the **factory's on-chain registry** (`getAllTokensCount → allTokens(i) → tokenToCurve`)
-  and each curve's live reserves via **paced, retried `eth_call` state reads** — never
-  per-browser `queryFilter(0,"latest")` log scans (those fail at high block heights and
-  caused tokens created on one account to be invisible on others).
-- Trade history is ingested incrementally from `Trade` events using a **capped, cursor-based
-  batch scan** (never from block 0), then de-duplicated by a composite key.
-- The Express API serves the canonical list at `GET /api/tokens`, `GET /api/tokens/:address`,
-  and `GET /api/tokens/:address/trades`. All clients read from here, so **metrics are
-  identical for every user**.
+- **Discovery = on-chain registry enumeration.** The client calls
+  `getAllTokensCount()` → `allTokens(i)` → `tokenToCurve(token)` and reads each token's
+  `name()`, `symbol()`, and `tokenMetadataURI()` plus each curve's live reserves — all via
+  **paced (≤3 concurrent), retried `eth_call` state reads**. It never uses
+  `queryFilter(0,"latest")` log scans, which fail at Arc's ~55M-block height and caused
+  tokens to be invisible across accounts.
+- **Metadata (image) = on-chain.** The image is a **pasted URL** stored in the factory's
+  `tokenMetadataURI` at launch. No upload host, no file store, no DB — every client reads
+  the same URL from the same chain.
+- **Trades = live incremental logs.** Price / raised / migrated are always exact (read from
+  live curve state). Trade *history* is best-effort: each client tails recent `Trade`
+  events from a bounded block window with a per-curve cursor, de-duplicating by
+  `tx_hash + side + amounts` — never scanned from block 0.
 - **Liquidity metrics** (market cap, price, raised cNGN, bonding-curve progress) are derived
-  identically from live on-chain curve state + indexed trades — the same math on every account.
-- **Server-Sent Events (SSE)** push instant *hints* that trigger an authoritative refetch;
-  a 15s poll is the convergence floor. Hints never write optimistic cross-account values.
-- Token metadata (name, description, image) lives in a backend file store
-  (`backend/data/metadata/<address>.json`) — no external database or service.
+  identically from live on-chain curve state + the same trade history — **identical math on
+  every account**.
+- A **15s sync interval** is the convergence floor; `BroadcastChannel('kobo_sync')` gives
+  same-device tabs an instant hint. Hints never write optimistic cross-account values.
+- **The fiat NGN ramp is fully client-side** (localStorage balances + on-chain
+  `faucetMint`), so it needs no backend either.
 
 ---
 
@@ -92,34 +95,28 @@ npm install
 npm test
 ```
 
-### 3. Run Backend API Server
+### 3. Run the Frontend App
 
 ```bash
-cd ../backend
+cd frontend
 npm install
 npm run dev
 ```
-> Running on `http://localhost:4000`
-
-### 4. Run Next.js Frontend App
-
-```bash
-cd ../frontend
-npm install
-npm run dev
-```
-> Open `http://localhost:3000` in your browser.
+> Open `http://localhost:3000` in your browser. No backend or database required.
 
 ---
 
 ## 🚀 Live Deployment Guide
 
-### Deploying Frontend to Vercel
+### Deploying to Vercel
 
 1. Push this repository to **GitHub**.
 2. Go to [Vercel Dashboard](https://vercel.com/new) and click **Import Repository**.
 3. Set the **Root Directory** to `frontend`.
 4. Click **Deploy**.
+
+No environment variables are required — the app is fully on-chain. Gas tokens (USDC) for
+testnet transactions come from Circle's official Arc faucet at **faucet.circle.com**.
 
 ---
 
