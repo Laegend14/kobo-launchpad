@@ -12,6 +12,11 @@ export const ARC_RPC_FALLBACKS = [
   "https://rpc.quicknode.testnet.arc.io",
 ];
 
+export const MULTICALL3_ADDRESS = "0xca11bde05977b3631167028862be2a173976ca11";
+export const MULTICALL3_ABI = [
+  "function aggregate3(tuple(address target, bool allowFailure, bytes callData)[] calls) external payable returns (tuple(bool success, bytes returnData)[])"
+];
+
 export const TOKEN_FACTORY_ABI = [
   "function launchToken(string name, string symbol, string metadataURI) external returns (address token, address curve)",
   "function getAllTokensCount() external view returns (uint256)",
@@ -437,8 +442,8 @@ export interface ChainTradeRecord {
 
 const CALL_PACE_MS = 120;          // sleep between consecutive state reads
 const MAX_PARALLEL_READS = 3;      // never hammer the RPC
-const TRADE_BATCH_BLOCKS = 20_000; // max window per queryFilter on the tail
-const TRADE_TAIL_LOOKBACK_BLOCKS = 50_000; // how far back the very first tail may reach
+const TRADE_BATCH_BLOCKS = 5_000;  // max window per queryFilter on the tail
+const TRADE_TAIL_LOOKBACK_BLOCKS = 5_000; // safe lookback window on testnet
 
 // Retry/backoff: Arc returns -32011 (request limit) and -32005 (limit exceeded)
 // when hammered; transient network errors also happen. Retry with exponential
@@ -480,7 +485,142 @@ export async function getAllTokensFromChain(): Promise<ChainTokenRecord[]> {
   }
   if (count === 0) return [];
 
-  // 2. Paced enumeration of addresses + tokenToCurve.
+  // 2. Multicall3 Batch Fetch — retrieves ALL tokens and live state in 1 single RPC call!
+  try {
+    const multicall = new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3_ABI, provider);
+    const factoryIface = new ethers.Interface(TOKEN_FACTORY_ABI);
+    const tokenIface = new ethers.Interface(MEMECOIN_ABI);
+    const curveIface = new ethers.Interface(BONDING_CURVE_ABI);
+
+    // Step A: Get all token addresses
+    const addrCalls: { target: string; allowFailure: boolean; callData: string }[] = [];
+    for (let i = 0; i < count; i++) {
+      addrCalls.push({
+        target: TOKEN_FACTORY_ADDRESS,
+        allowFailure: true,
+        callData: factoryIface.encodeFunctionData('allTokens', [i])
+      });
+    }
+
+    const addrResults: any[] = await rpcRetry(() => multicall.aggregate3.staticCall(addrCalls));
+    const tokenAddrs: string[] = [];
+    for (const res of addrResults) {
+      if (res.success && res.returnData !== '0x') {
+        try {
+          const decoded = factoryIface.decodeFunctionResult('allTokens', res.returnData);
+          if (decoded && decoded[0] && decoded[0] !== ethers.ZeroAddress) {
+            tokenAddrs.push(String(decoded[0]).toLowerCase());
+          }
+        } catch {}
+      }
+    }
+
+    if (tokenAddrs.length === 0) return [];
+
+    // Step B: Batch read tokenToCurve, tokenMetadataURI, name, symbol
+    const detailCalls: { target: string; allowFailure: boolean; callData: string }[] = [];
+    for (const token of tokenAddrs) {
+      detailCalls.push({ target: TOKEN_FACTORY_ADDRESS, allowFailure: true, callData: factoryIface.encodeFunctionData('tokenToCurve', [token]) });
+      detailCalls.push({ target: TOKEN_FACTORY_ADDRESS, allowFailure: true, callData: factoryIface.encodeFunctionData('tokenMetadataURI', [token]) });
+      detailCalls.push({ target: token, allowFailure: true, callData: tokenIface.encodeFunctionData('name') });
+      detailCalls.push({ target: token, allowFailure: true, callData: tokenIface.encodeFunctionData('symbol') });
+    }
+
+    const detailResults: any[] = await rpcRetry(() => multicall.aggregate3.staticCall(detailCalls));
+
+    // Decode curve addresses to build curve state calls
+    const curveAddrs: string[] = [];
+    let idx = 0;
+    for (let i = 0; i < tokenAddrs.length; i++) {
+      const curveRes = detailResults[idx];
+      let curve = '';
+      if (curveRes && curveRes.success && curveRes.returnData !== '0x') {
+        try {
+          curve = String(factoryIface.decodeFunctionResult('tokenToCurve', curveRes.returnData)[0]).toLowerCase();
+        } catch {}
+      }
+      curveAddrs.push(curve);
+      idx += 4;
+    }
+
+    // Step C: Batch read creator, realCngnReserve, migrated for all curves
+    const curveCalls: { target: string; allowFailure: boolean; callData: string }[] = [];
+    for (const curve of curveAddrs) {
+      if (curve && curve !== ethers.ZeroAddress) {
+        curveCalls.push({ target: curve, allowFailure: true, callData: curveIface.encodeFunctionData('creator') });
+        curveCalls.push({ target: curve, allowFailure: true, callData: curveIface.encodeFunctionData('realCngnReserve') });
+        curveCalls.push({ target: curve, allowFailure: true, callData: curveIface.encodeFunctionData('migrated') });
+      } else {
+        curveCalls.push({ target: TOKEN_FACTORY_ADDRESS, allowFailure: true, callData: '0x' });
+        curveCalls.push({ target: TOKEN_FACTORY_ADDRESS, allowFailure: true, callData: '0x' });
+        curveCalls.push({ target: TOKEN_FACTORY_ADDRESS, allowFailure: true, callData: '0x' });
+      }
+    }
+
+    const curveResults: any[] = await rpcRetry(() => multicall.aggregate3.staticCall(curveCalls));
+
+    const records: ChainTokenRecord[] = [];
+    idx = 0;
+    let curveIdx = 0;
+    for (let i = 0; i < tokenAddrs.length; i++) {
+      const token = tokenAddrs[i];
+      const curve = curveAddrs[i];
+
+      const metaRes = detailResults[idx + 1];
+      const nameRes = detailResults[idx + 2];
+      const symbolRes = detailResults[idx + 3];
+      idx += 4;
+
+      const creatorRes = curveResults[curveIdx++];
+      const realCngnRes = curveResults[curveIdx++];
+      const migratedRes = curveResults[curveIdx++];
+
+      let meta = '/jollof.png';
+      let name = '';
+      let symbol = '';
+      let creator = token;
+      let realCngn = BigInt(0);
+      let migrated = false;
+
+      if (metaRes && metaRes.success && metaRes.returnData !== '0x') {
+        try { meta = String(factoryIface.decodeFunctionResult('tokenMetadataURI', metaRes.returnData)[0]) || '/jollof.png'; } catch {}
+      }
+      if (nameRes && nameRes.success && nameRes.returnData !== '0x') {
+        try { name = String(tokenIface.decodeFunctionResult('name', nameRes.returnData)[0]) || ''; } catch {}
+      }
+      if (symbolRes && symbolRes.success && symbolRes.returnData !== '0x') {
+        try { symbol = String(tokenIface.decodeFunctionResult('symbol', symbolRes.returnData)[0]) || ''; } catch {}
+      }
+      if (creatorRes && creatorRes.success && creatorRes.returnData !== '0x') {
+        try { creator = String(curveIface.decodeFunctionResult('creator', creatorRes.returnData)[0]).toLowerCase(); } catch {}
+      }
+      if (realCngnRes && realCngnRes.success && realCngnRes.returnData !== '0x') {
+        try { realCngn = BigInt(curveIface.decodeFunctionResult('realCngnReserve', realCngnRes.returnData)[0] || 0); } catch {}
+      }
+      if (migratedRes && migratedRes.success && migratedRes.returnData !== '0x') {
+        try { migrated = Boolean(curveIface.decodeFunctionResult('migrated', migratedRes.returnData)[0]); } catch {}
+      }
+
+      records.push({
+        address: token,
+        curve_address: curve,
+        name,
+        symbol,
+        metadata_uri: meta,
+        creator_wallet: creator !== ethers.ZeroAddress ? creator : token,
+        migrated,
+        raisedCngn: Number(ethers.formatUnits(realCngn, 18)),
+        description: `${name} ($${symbol}) — launched on Kobo!`,
+        fromBlock: 0,
+      });
+    }
+
+    if (records.length > 0) return records;
+  } catch (err: any) {
+    console.warn('[Chain] Multicall3 batch read failed, falling back to individual calls:', err?.message || err);
+  }
+
+  // 3. Fallback: Paced enumeration if Multicall is unavailable.
   const pairs: { token: string; curve: string }[] = [];
   for (let i = 0; i < count; i++) {
     try {
@@ -493,7 +633,6 @@ export async function getAllTokensFromChain(): Promise<ChainTokenRecord[]> {
     await sleepMs(CALL_PACE_MS);
   }
 
-  // 3. Read each token's metadata + curve state with bounded parallelism.
   const records: ChainTokenRecord[] = [];
   for (let i = 0; i < pairs.length; i += MAX_PARALLEL_READS) {
     const batch = pairs.slice(i, i + MAX_PARALLEL_READS);
@@ -516,8 +655,6 @@ export async function getAllTokensFromChain(): Promise<ChainTokenRecord[]> {
         const metadataUriStr = metadataUri && String(metadataUri).length > 0 ? String(metadataUri) : '/jollof.png';
         const creatorStr = creator && creator !== ethers.ZeroAddress ? String(creator).toLowerCase() : token;
 
-        // raisedCngn is the REAL (net-of-fee) cNGN reserve — matches what the backend
-        // indexer reported before, so metrics math stays identical.
         return {
           address: token,
           curve_address: curve,
@@ -528,7 +665,7 @@ export async function getAllTokensFromChain(): Promise<ChainTokenRecord[]> {
           migrated: Boolean(migrated),
           raisedCngn: Number(ethers.formatUnits(realCngn || BigInt(0), 18)),
           description: `${String(name || '')} ($${String(symbol || '')}) — launched on Kobo!`,
-          fromBlock: 0, // set by the caller once latest block is known
+          fromBlock: 0,
         } as ChainTokenRecord;
       } catch (err: any) {
         console.warn(`[Chain] State read failed for ${token}:`, err?.message || err);
