@@ -29,10 +29,9 @@ When a launched token raises **50,000 cNGN**, its smart contract automatically l
 
 | Contract | Address | Explorer |
 | :--- | :--- | :--- |
-| **cNGN Stablecoin (Mock)** | `0x6B578aEfc9d9663327a8a677FFe07f272849f300` | [View on ArcScan](https://testnet.arcscan.app/address/0x6B578aEfc9d9663327a8a677FFe07f272849f300) |
-| **Token Factory** | `0x467816F896E03919300431e23CB9136a6e26a48B` | [View on ArcScan](https://testnet.arcscan.app/address/0x467816F896E03919300431e23CB9136a6e26a48B) |
-| **Migration Router** | `0x319bAd3efBC728eB4B432734C43bE2535992546a` | [View on ArcScan](https://testnet.arcscan.app/address/0x319bAd3efBC728eB4B432734C43bE2535992546a) |
-| **Featured Token ($JOFF)** | `0x05eC70a7e2245B733f5fbfDA93a5C0D18960a320` | [View on ArcScan](https://testnet.arcscan.app/address/0x05eC70a7e2245B733f5fbfDA93a5C0D18960a320) |
+| **cNGN Stablecoin (Mock)** | `0xeC30Ac1f9707904994A3a0b1124087636491E465` | [View on ArcScan](https://testnet.arcscan.app/address/0xeC30Ac1f9707904994A3a0b1124087636491E465) |
+| **Token Factory** | `0xFE7B8231664D557D49aC0E3A58EE03D3DD1797b6` | [View on ArcScan](https://testnet.arcscan.app/address/0xFE7B8231664D557D49aC0E3A58EE03D3DD1797b6) |
+| **Migration Router** | `0x09C1F9fa12a4d5dD2E18817E77d23Ebf2Ab4A6c8` | [View on ArcScan](https://testnet.arcscan.app/address/0x09C1F9fa12a4d5dD2E18817E77d23Ebf2Ab4A6c8) |
 
 ---
 

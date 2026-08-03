@@ -1,7 +1,8 @@
 import { ethers } from 'ethers';
+import { DEPLOYED_ADDRESSES } from './contracts';
 
-export const TOKEN_FACTORY_ADDRESS = "0x467816F896E03919300431e23CB9136a6e26a48B";
-export const CNGN_ADDRESS = "0x6B578aEfc9d9663327a8a677FFe07f272849f300";
+export const TOKEN_FACTORY_ADDRESS = DEPLOYED_ADDRESSES.tokenFactory;
+export const CNGN_ADDRESS = DEPLOYED_ADDRESSES.mockCNGN;
 export const ARC_TESTNET_CHAIN_ID = "0x4cef52"; // 5042002 in hex (verified: 5042002 = 0x4CEF52)
 export const ARC_RPC_URL = "https://rpc.testnet.arc.io";
 // Fallback RPCs if the primary is rate-limited (-32011) or unavailable.

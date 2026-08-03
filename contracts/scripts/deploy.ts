@@ -41,22 +41,8 @@ async function main() {
   const factoryContractAddress = await tokenFactory.getAddress();
   console.log("✔ TokenFactory deployed at:", factoryContractAddress);
 
-  // 5. Test Launch Initial Token ($JOFF)
-  console.log("\n5. Launching Initial Test Token ($JOFF)...");
-  const tx = await tokenFactory.launchToken("Jollof Coin", "JOFF", "ipfs://QmJollofSampleMetadata");
-  const receipt = await tx.wait(2);
-  console.log("✔ Token Launched in Tx:", receipt.hash);
-
-  const count = await tokenFactory.getAllTokensCount();
-  let firstTokenAddress = "Pending";
-  let firstCurveAddress = "Pending";
-
-  if (count > 0n) {
-    firstTokenAddress = await tokenFactory.allTokens(0);
-    firstCurveAddress = await tokenFactory.tokenToCurve(firstTokenAddress);
-    console.log("✔ Initial Token ($JOFF) Address:", firstTokenAddress);
-    console.log("✔ Initial Bonding Curve Address:", firstCurveAddress);
-  }
+  // 5. Deployment complete - No initial memecoins created
+  console.log("\n5. Contract deployment complete. Zero initial memecoins deployed.");
 
   const deploymentData = {
     network: (await ethers.provider.getNetwork()).name,
@@ -65,11 +51,6 @@ async function main() {
     factoryAddress,
     routerAddress,
     tokenFactoryAddress: factoryContractAddress,
-    sampleToken: {
-      address: firstTokenAddress,
-      curveAddress: firstCurveAddress,
-      symbol: "JOFF"
-    },
     deployedAt: new Date().toISOString()
   };
 
@@ -82,12 +63,7 @@ async function main() {
   mockCNGN: "${cngnAddress}",
   uniswapFactory: "${factoryAddress}",
   migrationRouter: "${routerAddress}",
-  tokenFactory: "${factoryContractAddress}",
-  sampleToken: {
-    address: "${firstTokenAddress}",
-    curveAddress: "${firstCurveAddress}",
-    symbol: "JOFF"
-  }
+  tokenFactory: "${factoryContractAddress}"
 };
 
 export const MOCK_CNGN_ABI = [
