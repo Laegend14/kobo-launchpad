@@ -1,9 +1,9 @@
 {
   "network": "arcTestnet",
   "chainId": "5042002",
-  "cngnAddress": "0x10985673765c103549778f2FBFca2506c158bf45",
-  "factoryAddress": "0x7688265fecAA1B23D39C2e3840B310a66f5E06eb",
-  "routerAddress": "0x79b238A637cab75512751f249415DdBe9fA64037",
-  "tokenFactoryAddress": "0x28FAAE476b6A6DBEEb01D2ff3be0728da6b520eC",
-  "deployedAt": "2026-08-03T10:26:44.371Z"
+  "cngnAddress": "0xD91359bEaa93e3FE755C2d04bB9851D97821667f",
+  "factoryAddress": "0x8250E1898C437BDf1241f7aa21BC8454f95A9784",
+  "routerAddress": "0x422a2A33E90D2AC747f62014665377D7eA8Fce28",
+  "tokenFactoryAddress": "0xA254FBfbB20Ef7B734D688b3fF5Cf65Be1Dc951e",
+  "deployedAt": "2026-08-05T19:56:18.807Z"
 }
