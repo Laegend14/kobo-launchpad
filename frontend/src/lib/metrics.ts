@@ -6,8 +6,38 @@ export interface TradeItem {
   cngn_amount: number;
   token_amount: number;
   price: number;
-  timestamp: number; // ms timestamp
+  timestamp: number; // ms timestamp — DISPLAY / 24h bucketing only
   tx_hash: string;
+  // Arc ordering keys. Arc mines sub-second blocks that can SHARE a block.timestamp,
+  // so timestamps cannot order trades. blockNumber (then logIndex within the block) is
+  // the canonical, total ordering. Optimistic local trades have no block yet, so both
+  // are optional and such trades sort last (i.e. newest), which is correct for them.
+  blockNumber?: number;
+  logIndex?: number;
+}
+
+/**
+ * Canonical chronological comparator (ascending).
+ *
+ * On Arc, `block.timestamp` is NOT a valid ordering key — consecutive sub-second blocks
+ * routinely carry the same timestamp, so sorting by it scrambles trade sequence and
+ * makes derived metrics (VWAP, price change, ATH/ATL, holder balances) wrong or empty.
+ * Confirmed trades are ordered by (blockNumber, logIndex); un-mined optimistic trades
+ * have no block number and are placed at the end (newest), tie-broken by timestamp.
+ */
+export function compareTradesAsc(a: TradeItem, b: TradeItem): number {
+  const aBlock = typeof a.blockNumber === 'number' ? a.blockNumber : Number.MAX_SAFE_INTEGER;
+  const bBlock = typeof b.blockNumber === 'number' ? b.blockNumber : Number.MAX_SAFE_INTEGER;
+  if (aBlock !== bBlock) return aBlock - bBlock;
+  const aIdx = typeof a.logIndex === 'number' ? a.logIndex : 0;
+  const bIdx = typeof b.logIndex === 'number' ? b.logIndex : 0;
+  if (aIdx !== bIdx) return aIdx - bIdx;
+  return (a.timestamp || 0) - (b.timestamp || 0);
+}
+
+/** Newest-first ordering for trade feeds. */
+export function compareTradesDesc(a: TradeItem, b: TradeItem): number {
+  return compareTradesAsc(b, a);
 }
 
 export interface DetailedMetrics {
@@ -131,8 +161,12 @@ export function deriveTokenMetrics(
   isMigrated: boolean,
   trades: TradeItem[] = []
 ): DetailedMetrics {
-  // Sort trades chronologically
-  const sortedTrades = [...trades].sort((a, b) => a.timestamp - b.timestamp);
+  // Sort trades chronologically by BLOCK NUMBER (then logIndex) — not timestamp.
+  // Arc mines sub-second blocks that share a block.timestamp, so a timestamp sort left
+  // trades in an arbitrary order within each second, which scrambled VWAP, ATH/ATL,
+  // price-change and holder-balance reconstruction below (all of which read this array
+  // positionally, e.g. `trades24h[0].price` as the reference price).
+  const sortedTrades = [...trades].sort(compareTradesAsc);
 
   // Derive virtual reserves based on raised cNGN
   const virtualCngn = INITIAL_VIRTUAL_CNGN + Math.max(0, raisedCngn);

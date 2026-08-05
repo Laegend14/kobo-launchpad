@@ -127,26 +127,26 @@ export default function CreateTokenPage() {
         </p>
       </div>
 
-      {/* Base Sepolia Faucet Gas Banner */}
+      {/* Arc Testnet Faucet Gas Banner — Arc's native gas token IS USDC, not ETH. */}
       <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-xs font-inter flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
           <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
-            <h4 className="font-bold text-white text-xs">Need Base Sepolia ETH Gas to Deploy?</h4>
+            <h4 className="font-bold text-white text-xs">Need Arc Testnet USDC Gas to Deploy?</h4>
             <p className="text-[11px] text-slate-300">
-              Claim free testnet ETH gas from Coinbase's official Base Sepolia faucet at <span className="font-mono text-cyan-300 font-bold">faucets.chain.link/base-sepolia</span>
+              Arc&apos;s native gas currency is USDC. Claim free testnet USDC from Circle&apos;s official faucet at <span className="font-mono text-cyan-300 font-bold">faucet.circle.com</span>
             </p>
           </div>
         </div>
         <a
-          href="https://faucets.chain.link/base-sepolia"
+          href="https://faucet.circle.com"
           target="_blank"
           rel="noreferrer"
           className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-grotesk font-bold text-xs shrink-0 flex items-center space-x-1.5 shadow-md shadow-cyan-500/20 transition-all"
         >
-          <span>Claim Base Gas</span>
+          <span>Claim Arc Gas</span>
           <ArrowUpRight className="w-3.5 h-3.5" />
         </a>
       </div>

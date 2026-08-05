@@ -10,7 +10,7 @@ interface WithdrawModalProps {
 }
 
 export default function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
-  const { walletAddress, cngnBalance, tokens, withdrawNaira } = useAuth();
+  const { walletAddress, cngnBalance, tokens, withdrawCngn } = useAuth();
   
   const [assetType, setAssetType] = useState<'cNGN' | 'memecoin'>('cNGN');
   const [selectedTokenAddr, setSelectedTokenAddr] = useState<string>(tokens[0]?.address || '');
@@ -35,17 +35,21 @@ export default function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
 
     await new Promise(res => setTimeout(res, 1000));
 
-    if (assetType === 'cNGN') {
-      withdrawNaira(numAmount);
-      setSuccessMsg(
-        recipientAddress
-          ? `Successfully transferred ₦${numAmount.toLocaleString('en-NG')} cNGN to ${recipientAddress.substring(0, 8)}... on Arc Testnet!`
-          : `Successfully redeemed ₦${numAmount.toLocaleString('en-NG')} cNGN to bank account ${bankAccount} (${bankName})!`
-      );
-    } else {
-      setSuccessMsg(
-        `Successfully transferred ${numAmount.toLocaleString('en-US')} $${selectedToken?.symbol || 'TOKEN'} to ${recipientAddress || walletAddress} on Arc Testnet!`
-      );
+    try {
+      if (assetType === 'cNGN') {
+        await withdrawCngn(numAmount);
+        setSuccessMsg(
+          recipientAddress
+            ? `Successfully transferred ₦${numAmount.toLocaleString('en-NG')} cNGN to ${recipientAddress.substring(0, 8)}... on Arc Testnet!`
+            : `Successfully redeemed ₦${numAmount.toLocaleString('en-NG')} cNGN to bank account ${bankAccount} (${bankName})!`
+        );
+      } else {
+        setSuccessMsg(
+          `Successfully transferred ${numAmount.toLocaleString('en-US')} ${selectedToken?.symbol || 'TOKEN'} to ${recipientAddress || walletAddress} on Arc Testnet!`
+        );
+      }
+    } catch (err: any) {
+      setSuccessMsg(null);
     }
 
     setIsWithdrawing(false);

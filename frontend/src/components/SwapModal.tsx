@@ -44,21 +44,25 @@ export default function SwapModal({ isOpen, onClose, defaultDirection = 'ngnToCn
 
     await new Promise(res => setTimeout(res, 600));
 
-    let ok = false;
-    if (direction === 'ngnToCngn') {
-      ok = swapNairaToCngn(numAmount);
-      if (ok) {
-        setSuccessMsg(`Successfully swapped ₦${numAmount.toLocaleString('en-NG')} NGN ➔ ₦${numAmount.toLocaleString('en-NG')} cNGN (1:1 ratio)!`);
+    try {
+      let ok = false;
+      if (direction === 'ngnToCngn') {
+        ok = await swapNairaToCngn(numAmount);
+        if (ok) {
+          setSuccessMsg(`Successfully swapped ₦${numAmount.toLocaleString('en-NG')} NGN ➔ ₦${numAmount.toLocaleString('en-NG')} cNGN (1:1 ratio)!`);
+        }
+      } else {
+        ok = await swapCngnToNaira(numAmount);
+        if (ok) {
+          setSuccessMsg(`Successfully swapped ₦${numAmount.toLocaleString('en-NG')} cNGN ➔ ₦${numAmount.toLocaleString('en-NG')} NGN (1:1 ratio)!`);
+        }
       }
-    } else {
-      ok = swapCngnToNaira(numAmount);
-      if (ok) {
-        setSuccessMsg(`Successfully swapped ₦${numAmount.toLocaleString('en-NG')} cNGN ➔ ₦${numAmount.toLocaleString('en-NG')} NGN (1:1 ratio)!`);
-      }
-    }
 
-    if (!ok) {
-      setErrorMsg('Swap failed. Please check your balance.');
+      if (!ok) {
+        setErrorMsg('Swap failed. Please check your balance.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Swap transaction failed or was rejected.');
     }
 
     setIsSwapping(false);

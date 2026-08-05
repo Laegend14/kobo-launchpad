@@ -10,7 +10,7 @@ interface CngnDepositModalProps {
 }
 
 export default function CngnDepositModal({ isOpen, onClose }: CngnDepositModalProps) {
-  const { walletAddress, depositNaira } = useAuth();
+  const { walletAddress, swapNairaToCngn } = useAuth();
   const [cngnAmount, setCngnAmount] = useState('50000');
   const [copied, setCopied] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -37,9 +37,18 @@ export default function CngnDepositModal({ isOpen, onClose }: CngnDepositModalPr
 
     await new Promise(res => setTimeout(res, 800));
 
-    depositNaira(numAmount);
-    setIsProcessing(false);
-    setSuccessMsg(`Successfully deposited ₦${numAmount.toLocaleString('en-NG')} cNGN to your Arc Testnet wallet!`);
+    try {
+      const ok = await swapNairaToCngn(numAmount);
+      setIsProcessing(false);
+      if (ok) {
+        setSuccessMsg(`Successfully minted ₦${numAmount.toLocaleString('en-NG')} cNGN to your Arc Testnet wallet!`);
+      } else {
+        setSuccessMsg(`Insufficient Naira balance. Claim Naira first from the deposit modal.`);
+      }
+    } catch (err: any) {
+      setIsProcessing(false);
+      setSuccessMsg(err?.message || 'cNGN minting failed or was rejected.');
+    }
   };
 
   return (

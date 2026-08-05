@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
-import { TradeItem } from '@/lib/metrics';
+import { TradeItem, compareTradesAsc } from '@/lib/metrics';
 
 interface PriceChartProps {
   symbol: string;
@@ -34,7 +34,10 @@ export default function PriceChart({
     // Generate price series from trades or fallback curve steps
     let pricePoints: number[] = [];
     if (trades.length > 0) {
-      const sorted = [...trades].sort((a, b) => a.timestamp - b.timestamp);
+      // Order by (blockNumber, logIndex), not timestamp. Arc's sub-second blocks share a
+      // block.timestamp, so a timestamp sort drew the price series in arbitrary order
+      // within each second — the chart zig-zagged instead of tracking the curve.
+      const sorted = [...trades].sort(compareTradesAsc);
       pricePoints = sorted.map(t => t.price);
     }
     if (pricePoints.length === 0) {

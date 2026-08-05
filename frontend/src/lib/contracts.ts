@@ -1,8 +1,12 @@
+// Arc Testnet (chain id 5042002) deployment. These are the addresses the app reads
+// through the Arc RPC — they MUST stay on the same chain as CHAIN_RPC_URL in
+// onchain.ts, or the factory registry reads resolve to empty and no token is ever
+// discovered. Recovered from the pre-Base-Sepolia Arc deployment (2026-08-03).
 export const DEPLOYED_ADDRESSES = {
-  mockCNGN: "0x474c3422E93830cdE64c85AE842150497e8216D8",
-  uniswapFactory: "0x4Ca9A69ff8dBF37819d21DB37260142416796D72",
-  migrationRouter: "0x86Cf2ED3D40d12bD1A6d644DcBb7fC49DeD80C90",
-  tokenFactory: "0x5120861ae9987774322a60BC2EE8Ef0fA304cA98"
+  mockCNGN: "0x10985673765c103549778f2FBFca2506c158bf45",
+  uniswapFactory: "0x7688265fecAA1B23D39C2e3840B310a66f5E06eb",
+  migrationRouter: "0x79b238A637cab75512751f249415DdBe9fA64037",
+  tokenFactory: "0x28FAAE476b6A6DBEEb01D2ff3be0728da6b520eC"
 };
 
 export const MOCK_CNGN_ABI = [

@@ -29,9 +29,17 @@ When a launched token raises **50,000 cNGN**, its smart contract automatically l
 
 | Contract | Address | Explorer |
 | :--- | :--- | :--- |
-| **cNGN Stablecoin (Mock)** | `0xeC30Ac1f9707904994A3a0b1124087636491E465` | [View on ArcScan](https://testnet.arcscan.app/address/0xeC30Ac1f9707904994A3a0b1124087636491E465) |
-| **Token Factory** | `0xFE7B8231664D557D49aC0E3A58EE03D3DD1797b6` | [View on ArcScan](https://testnet.arcscan.app/address/0xFE7B8231664D557D49aC0E3A58EE03D3DD1797b6) |
-| **Migration Router** | `0x09C1F9fa12a4d5dD2E18817E77d23Ebf2Ab4A6c8` | [View on ArcScan](https://testnet.arcscan.app/address/0x09C1F9fa12a4d5dD2E18817E77d23Ebf2Ab4A6c8) |
+| **cNGN Stablecoin (Mock)** | `0x10985673765c103549778f2FBFca2506c158bf45` | [View on ArcScan](https://testnet.arcscan.app/address/0x10985673765c103549778f2FBFca2506c158bf45) |
+| **Token Factory** | `0x28FAAE476b6A6DBEEb01D2ff3be0728da6b520eC` | [View on ArcScan](https://testnet.arcscan.app/address/0x28FAAE476b6A6DBEEb01D2ff3be0728da6b520eC) |
+| **Uniswap V2 Factory** | `0x7688265fecAA1B23D39C2e3840B310a66f5E06eb` | [View on ArcScan](https://testnet.arcscan.app/address/0x7688265fecAA1B23D39C2e3840B310a66f5E06eb) |
+| **Migration Router** | `0x79b238A637cab75512751f249415DdBe9fA64037` | [View on ArcScan](https://testnet.arcscan.app/address/0x79b238A637cab75512751f249415DdBe9fA64037) |
+
+> These are the canonical addresses. They are mirrored verbatim in
+> `contracts/deployed-addresses.json` and `frontend/src/lib/contracts.ts` — if you redeploy,
+> all three must move together or the frontend reads a registry that doesn't exist.
+>
+> **Arc's native gas currency is USDC** (18 decimals as the gas token). Wallets without
+> custom-gas-token support will label it "ETH"; the underlying asset is still USDC.
 
 ---
 
@@ -63,10 +71,21 @@ what makes a memecoin created on account A appear on account B within one sync i
 - **Metadata (image) = on-chain.** The image is a **pasted URL** stored in the factory's
   `tokenMetadataURI` at launch. No upload host, no file store, no DB — every client reads
   the same URL from the same chain.
-- **Trades = live incremental logs.** Price / raised / migrated are always exact (read from
-  live curve state). Trade *history* is best-effort: each client tails recent `Trade`
-  events from a bounded block window with a per-curve cursor, de-duplicating by
-  `tx_hash + side + amounts` — never scanned from block 0.
+- **Trades = live incremental logs, ordered by block number.** Price / raised / migrated are
+  always exact (read from live curve state). Trade *history* is best-effort: each client
+  tails recent `Trade` events via `eth_getLogs` over a bounded block window with a per-curve
+  cursor, de-duplicating by the composite `txHash + logIndex` id — never scanned from
+  block 0.
+- **`block.timestamp` is never used as an ordering key.** Arc mines sub-second blocks that
+  routinely *share* a timestamp, so sorting trades by time left them in arbitrary order
+  within each second and scrambled every positionally-derived metric (VWAP, 1h/24h price
+  change, ATH/ATL, holder reconstruction). The canonical total ordering is
+  `(blockNumber, logIndex)` — see `compareTradesAsc` in `frontend/src/lib/metrics.ts`.
+  Timestamps survive only for display and for 24h/1h *windowing*.
+- **Deterministic finality ⇒ each block is processed exactly once.** Arc has no reorgs, so
+  there is no confirmation-depth delay and no rescan: the cursor advances to the block the
+  scan *actually* reached (`scannedToBlock`), never blindly to the head — advancing past an
+  unscanned range would skip those blocks permanently.
 - **Liquidity metrics** (market cap, price, raised cNGN, bonding-curve progress) are derived
   identically from live on-chain curve state + the same trade history — **identical math on
   every account**.

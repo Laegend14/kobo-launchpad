@@ -20,11 +20,9 @@ const config: HardhatUserConfig = {
     cache: "./cache",
     artifacts: "./artifacts"
   },
+  defaultNetwork: "hardhat",
   networks: {
-    baseSepolia: {
-      url: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
-    },
+    // Arc Testnet is the only live target. Native gas currency is USDC (18 decimals).
     arcTestnet: {
       url: process.env.ARC_TESTNET_RPC_URL || "https://rpc.testnet.arc.io",
       chainId: 5042002,

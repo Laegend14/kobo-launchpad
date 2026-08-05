@@ -1,9 +1,23 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { TradeItem, DetailedMetrics, deriveTokenMetrics, quoteBuy, quoteSell, INITIAL_VIRTUAL_CNGN, INITIAL_VIRTUAL_TOKENS, MIGRATION_TARGET_CNGN } from '@/lib/metrics';
-import { mintCngnOnChain, buyTokenOnChain, sellTokenOnChain, refreshTokenReserves, getAllTokensFromChain, getRecentTradesFromChain, ARC_RPC_URL, ChainTokenRecord } from '@/lib/onchain';
-import { ethers } from 'ethers';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { TradeItem, DetailedMetrics, deriveTokenMetrics, quoteBuy, quoteSell, compareTradesDesc, INITIAL_VIRTUAL_CNGN, INITIAL_VIRTUAL_TOKENS, MIGRATION_TARGET_CNGN } from '@/lib/metrics';
+import {
+  mintCngnOnChain,
+  burnCngnOnChain,
+  getCngnBalanceOnChain,
+  buyTokenOnChain,
+  sellTokenOnChain,
+  refreshTokenReserves,
+  getAllTokensFromChain,
+  getRecentTradesFromChainDetailed,
+  getLatestBlockNumber,
+  ARC_TESTNET_CHAIN_ID,
+  ARC_RPC_URL,
+  ARC_RPC_FALLBACKS,
+  ARC_EXPLORER_URL,
+  ChainTokenRecord,
+} from '@/lib/onchain';
 
 export interface TokenItem {
   address: string;
@@ -34,10 +48,19 @@ interface AuthContextType {
   login: (address?: string) => void;
   connectRealWeb3Wallet: () => Promise<string>;
   logout: () => void;
+  /** True while the authoritative on-chain cNGN balance is being read. */
+  isCngnBalanceSyncing: boolean;
+  /** Re-reads the REAL ERC-20 cNGN balance from Arc for the connected wallet. */
+  refreshCngnBalance: () => Promise<void>;
   depositNaira: (nairaAmount: number) => void;
-  withdrawNaira: (nairaAmount: number) => void;
-  swapNairaToCngn: (amount: number) => boolean;
-  swapCngnToNaira: (amount: number) => boolean;
+  /**
+   * Redeems cNGN (burns it on-chain) and credits the fiat Naira side.
+   * Named `withdrawCngn` because it debits cNGN — the old `withdrawNaira` name
+   * described the opposite of what it actually did.
+   */
+  withdrawCngn: (cngnAmount: number) => Promise<boolean>;
+  swapNairaToCngn: (amount: number) => Promise<boolean>;
+  swapCngnToNaira: (amount: number) => Promise<boolean>;
   launchToken: (name: string, symbol: string, description: string, imageUrl: string, customAddress?: string, customCurve?: string, txHash?: string) => TokenItem;
   buyToken: (tokenAddress: string, cngnAmount: number) => Promise<{ tokensOut: number; priceImpact: number; txHash: string }>;
   sellToken: (tokenAddress: string, tokenAmount: number) => Promise<{ cngnOut: number; priceImpact: number; txHash: string }>;
@@ -69,8 +92,15 @@ function mapChainToken(t: ChainTokenRecord): TokenItem {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  // Naira is SIMULATED fiat (a mock bank balance), so a starting float is fine — it is
+  // topped up by the Naira faucet in DepositModal.
   const [nairaBalance, setNairaBalance] = useState<number>(500000);
-  const [cngnBalance, setCngnBalance] = useState<number>(250000);
+  // cNGN is a REAL ERC-20 on Arc. It is spent on-chain by every buy (approve +
+  // curve.buy) and credited by every sell, so it must NEVER be a fabricated local
+  // grant — it starts empty and is overwritten by the authoritative on-chain
+  // balanceOf read. Users obtain cNGN by swapping Naira, which mints it on-chain.
+  const [cngnBalance, setCngnBalance] = useState<number>(0);
+  const [isCngnBalanceSyncing, setIsCngnBalanceSyncing] = useState<boolean>(false);
   const [tokens, setTokens] = useState<TokenItem[]>(INITIAL_TOKENS);
   const [tradesMap, setTradesMap] = useState<Record<string, TradeItem[]>>(INITIAL_TRADES);
   const [userHoldings, setUserHoldings] = useState<Record<string, number>>(() => {
@@ -138,8 +168,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const savedTrades = localStorage.getItem('kobo_trades');
 
       if (savedWallet) setWalletAddress(savedWallet);
-      if (savedBalance) setCngnBalance(parseFloat(savedBalance));
-      if (savedNaira) setNairaBalance(parseFloat(savedNaira));
+      // Cached cNGN is only a first-paint placeholder — the authoritative balanceOf
+      // read overwrites it moments later. Guard against a corrupted "NaN" entry, which
+      // would otherwise render "₦NaN" and break every insufficient-balance check.
+      if (savedBalance) {
+        const parsed = parseFloat(savedBalance);
+        if (Number.isFinite(parsed)) setCngnBalance(parsed);
+      }
+      if (savedNaira) {
+        const parsed = parseFloat(savedNaira);
+        if (Number.isFinite(parsed)) setNairaBalance(parsed);
+      }
       if (savedTokens) {
         try { setTokens(JSON.parse(savedTokens)); } catch (e) {}
       }
@@ -200,7 +239,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Merge on-chain registry tokens safely without ever allowing transient RPC glitches
         // or empty sync responses to wipe out existing valid tokens from the dashboard.
-        let mergedTokens: TokenItem[] = [];
         setTokens(prev => {
           if (chainTokens.length === 0 && prev.length > 0) {
             // Keep existing valid tokens intact if RPC sync returns empty
@@ -234,34 +272,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             (Boolean((p as any).isOptimistic) && (now - Number((p as any).createdAt || 0)) < 180000)
           );
 
-          mergedTokens = [...validPrev, ...newFromChain];
-          localStorage.setItem('kobo_tokens', JSON.stringify(mergedTokens));
-          return mergedTokens;
+          const merged = [...validPrev, ...newFromChain];
+          localStorage.setItem('kobo_tokens', JSON.stringify(merged));
+          return merged;
         });
 
+        // Curves to tail come straight from the chain read — NOT from a variable assigned
+        // inside the setTokens updater above. React may defer or (in StrictMode) double-invoke
+        // an updater, so reading it out here raced: on the first poll it was still empty and
+        // the trade tail iterated nothing, leaving trade history and every derived metric
+        // blank until a later poll happened to win the race.
+        const curvesToTail = chainTokens
+          .filter(t => t.curve_address)
+          .map(t => ({
+            address: t.address.toLowerCase(),
+            curve_address: t.curve_address.toLowerCase(),
+            fromBlock: Number(t.fromBlock || 0),
+          }));
+
         // Resolve the current head once; every curve tail scans up to this block.
-        let latestBlock = 0;
-        try {
-          const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
-          latestBlock = await provider.getBlockNumber();
-        } catch { /* tail readers fall back to their own getBlockNumber */ }
+        // Block NUMBER is the canonical clock on Arc (sub-second blocks make timestamps
+        // ambiguous), so the sync cursor is denominated in blocks, not time.
+        const latestBlock = await getLatestBlockNumber();
 
         // ── STEP 2: incremental Trade history per curve (bounded, never from block 0) ──
         // Seed each curve's cursor at first observation so we only ever tail the new
         // range. Merge fresh trades into the existing map, de-duping by tx composite key.
         const CONCURRENCY = 3;
-        for (let i = 0; i < mergedTokens.length; i += CONCURRENCY) {
-          const batch = mergedTokens.slice(i, i + CONCURRENCY);
+        for (let i = 0; i < curvesToTail.length; i += CONCURRENCY) {
+          const batch = curvesToTail.slice(i, i + CONCURRENCY);
           const batchResults = await Promise.all(
-            batch.map(async (tk: TokenItem) => {
-              const addrLower = tk.address.toLowerCase();
-              const curveLower = (tk.curve_address || '').toLowerCase();
-              if (!curveLower) return [addrLower, [] as TradeItem[]] as const;
-              const cursor = tradeCursorRef.current[curveLower] || 0;
+            batch.map(async (tk) => {
+              const addrLower = tk.address;
+              const curveLower = tk.curve_address;
+              // Seed the cursor at the block where this client first observed the token, so
+              // the very first tail starts at the token's own launch block instead of 0.
+              const cursor = tradeCursorRef.current[curveLower] || tk.fromBlock || 0;
               try {
-                const chainTrades = await getRecentTradesFromChain(curveLower, cursor, latestBlock);
+                const { trades: chainTrades, scannedToBlock } =
+                  await getRecentTradesFromChainDetailed(curveLower, cursor, latestBlock);
                 const items: TradeItem[] = chainTrades.map(tr => ({
-                  id: tr.tx_hash || tr.id,
+                  // Keep the composite `${txHash}-${logIndex}` id: one transaction can
+                  // emit several Trade logs, so the tx hash alone is not unique and
+                  // collapsing to it silently dropped trades.
+                  id: tr.id,
                   token_address: addrLower,
                   trader_wallet: tr.trader_wallet,
                   side: tr.side,
@@ -270,9 +324,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   price: tr.price,
                   timestamp: tr.timestamp,
                   tx_hash: tr.tx_hash,
+                  blockNumber: tr.blockNumber,
+                  logIndex: tr.logIndex,
                 }));
-                // Advance the cursor so the next poll only tails newer blocks.
-                if (latestBlock > 0) tradeCursorRef.current[curveLower] = latestBlock;
+                // Advance the cursor to how far the scan ACTUALLY got — not blindly to
+                // the head. A tail can stop short (RPC range limit / per-poll batch cap),
+                // and jumping to `latestBlock` anyway would skip those blocks forever.
+                // Arc has deterministic finality, so resuming from exactly here processes
+                // every block once, with no rescan and no confirmation-depth delay.
+                if (scannedToBlock > cursor) tradeCursorRef.current[curveLower] = scannedToBlock;
                 return [addrLower, items] as const;
               } catch {
                 return [addrLower, [] as TradeItem[]] as const;
@@ -284,11 +344,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setTradesMap(prev => {
             const next = { ...prev };
             for (const [addr, items] of batchResults) {
-              if (items.length === 0) { if (!next[addr]) next[addr] = next[addr] || (prev[addr] || []); continue; }
               const existing = next[addr] || prev[addr] || [];
-              const seen = new Set(existing.map((t: TradeItem) => `${t.tx_hash}:${t.side}:${t.cngn_amount}:${t.token_amount}`));
-              const additions = items.filter((t: TradeItem) => !seen.has(`${t.tx_hash}:${t.side}:${t.cngn_amount}:${t.token_amount}`));
-              next[addr] = [...additions, ...existing].sort((a, b) => b.timestamp - a.timestamp);
+              if (items.length === 0) { next[addr] = existing; continue; }
+
+              // De-dupe on the composite (txHash, logIndex) id. The old key hashed the
+              // amounts, so two identical-size trades in the same tx collapsed into one.
+              const incomingIds = new Set(items.map((t: TradeItem) => String(t.id)));
+              const incomingTxs = new Set(items.map((t: TradeItem) => (t.tx_hash || '').toLowerCase()));
+
+              const kept = existing.filter((t: TradeItem) => {
+                if (incomingIds.has(String(t.id))) return false;
+                // An optimistic local trade (no blockNumber yet) is superseded the moment
+                // its transaction shows up in a block — otherwise it lists twice.
+                const isPending = typeof t.blockNumber !== 'number';
+                if (isPending && incomingTxs.has((t.tx_hash || '').toLowerCase())) return false;
+                return true;
+              });
+
+              // Newest first by BLOCK NUMBER, then logIndex. Sorting by timestamp put
+              // same-second Arc trades in arbitrary order (and metrics read this array
+              // positionally), which is why trading metrics came out wrong.
+              next[addr] = [...items, ...kept].sort(compareTradesDesc);
             }
             localStorage.setItem('kobo_trades', JSON.stringify(next));
             return next;
@@ -315,6 +391,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // ── cNGN BALANCE = REAL ON-CHAIN ERC-20 BALANCE ──────────────────────────────
+  // cNGN is a live ERC-20 on Arc. Buys spend it (approve + curve.buy) and sells
+  // credit it, so the number on screen has to come from `balanceOf`, not from a
+  // localStorage counter. A local-only counter drifted from reality the instant a
+  // transaction was rejected/failed, or when the same wallet was used on another
+  // device — users then saw a healthy balance while trades reverted for insufficient
+  // funds. Local writes remain as an optimistic flash; this read is authoritative.
+  const refreshCngnBalance = useCallback(async () => {
+    if (!walletAddress) return;
+    setIsCngnBalanceSyncing(true);
+    try {
+      const onChain = await getCngnBalanceOnChain(walletAddress);
+      // null = RPC hiccup, NOT an empty wallet. Keep the last known value rather than
+      // flashing ₦0, which would look like the user's funds vanished.
+      if (onChain === null) return;
+      setCngnBalance(onChain);
+      localStorage.setItem('kobo_balance', onChain.toString());
+    } finally {
+      setIsCngnBalanceSyncing(false);
+    }
+  }, [walletAddress]);
+
+  // Keep the displayed cNGN balance reconciled with the chain: on wallet connect /
+  // account switch, and on the same 15s cadence as the token sync.
+  useEffect(() => {
+    if (!walletAddress) {
+      setCngnBalance(0);
+      return;
+    }
+    refreshCngnBalance();
+    const interval = setInterval(refreshCngnBalance, 15000);
+    return () => clearInterval(interval);
+  }, [walletAddress, refreshCngnBalance]);
+
   const connectRealWeb3Wallet = async (): Promise<string> => {
     // A REAL wallet is mandatory: trades, launches and fees are all executed by the
     // user's own address on-chain. A simulated address would only create phantom
@@ -335,23 +445,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await (window as any).ethereum.request({
           method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0x14a34' }],
+          params: [{ chainId: ARC_TESTNET_CHAIN_ID }],
         });
       } catch (switchErr: any) {
         if (switchErr.code === 4902 || switchErr?.data?.originalError?.code === 4902) {
           await (window as any).ethereum.request({
             method: 'wallet_addEthereumChain',
             params: [{
-              chainId: '0x14a34',
-              chainName: 'Base Sepolia',
-              nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-              rpcUrls: [
-                'https://sepolia.base.org',
-                'https://base-sepolia.drpc.org',
-                'https://base-sepolia-rpc.publicnode.com',
-                'https://base-sepolia.blockpi.network/v1/rpc/public'
-              ],
-              blockExplorerUrls: ['https://sepolia.basescan.org']
+              chainId: ARC_TESTNET_CHAIN_ID,
+              chainName: 'Arc Testnet',
+              // Arc's native currency IS USDC (18 decimals as the gas token).
+              nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
+              rpcUrls: [ARC_RPC_URL, ...ARC_RPC_FALLBACKS],
+              blockExplorerUrls: [ARC_EXPLORER_URL],
             }]
           });
         }
@@ -372,7 +478,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('kobo_wallet');
   };
 
+  /**
+   * Credits the SIMULATED fiat Naira balance (the mock bank account).
+   *
+   * Naira has no on-chain representation — it is the fiat leg of the ramp. Guarded
+   * against NaN/Infinity/negative input so a malformed field value can never corrupt
+   * the persisted balance into "NaN" (which then parses back as NaN forever).
+   */
   const depositNaira = (nairaAmount: number) => {
+    if (!Number.isFinite(nairaAmount) || nairaAmount <= 0) return;
     setNairaBalance(prev => {
       const next = prev + nairaAmount;
       localStorage.setItem('kobo_naira_balance', next.toString());
@@ -380,44 +494,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const withdrawNaira = (nairaAmount: number) => {
-    setCngnBalance(prev => {
-      const next = Math.max(0, prev - nairaAmount);
-      localStorage.setItem('kobo_balance', next.toString());
+  /**
+   * Redeems cNGN: burns the real ERC-20 on Arc, then credits the fiat Naira side.
+   *
+   * The old `withdrawNaira` only decremented a localStorage number — the on-chain
+   * cNGN was never destroyed, so the "withdrawn" balance reappeared on the next
+   * authoritative balanceOf read and the user could spend the same cNGN twice.
+   */
+  const withdrawCngn = async (cngnAmount: number): Promise<boolean> => {
+    if (!Number.isFinite(cngnAmount) || cngnAmount <= 0) return false;
+    if (cngnBalance < cngnAmount) return false;
+    if (!walletAddress) return false;
+
+    await burnCngnOnChain(walletAddress, cngnAmount);
+    await refreshCngnBalance();
+
+    setNairaBalance(prev => {
+      const next = prev + cngnAmount;
+      localStorage.setItem('kobo_naira_balance', next.toString());
       return next;
     });
+    return true;
   };
 
-  const swapNairaToCngn = (amount: number): boolean => {
-    if (amount <= 0 || nairaBalance < amount) return false;
+  /**
+   * Naira ➔ cNGN (1:1). Debits simulated fiat and MINTS real cNGN on Arc.
+   *
+   * The mint is awaited, not fire-and-forget. Previously the local cNGN counter was
+   * credited immediately and `mintCngnOnChain` was left to fail silently in a
+   * `.catch(console.warn)` — so a rejected signature still "gave" the user cNGN that
+   * did not exist on-chain, and their next buy reverted. Now the Naira debit is only
+   * committed once the mint is actually mined, and the resulting balance is read back
+   * from the chain rather than assumed.
+   */
+  const swapNairaToCngn = async (amount: number): Promise<boolean> => {
+    if (!Number.isFinite(amount) || amount <= 0) return false;
+    if (nairaBalance < amount) return false;
+    if (!walletAddress) {
+      throw new Error("Connect a wallet on Arc Testnet to mint cNGN.");
+    }
+
+    await mintCngnOnChain(walletAddress, amount);
+
     setNairaBalance(prev => {
       const next = prev - amount;
       localStorage.setItem('kobo_naira_balance', next.toString());
       return next;
     });
-    setCngnBalance(prev => {
-      const next = prev + amount;
-      localStorage.setItem('kobo_balance', next.toString());
-      return next;
-    });
-
-    // Execute real on-chain ERC20 cNGN minting on Arc Testnet if wallet is connected
-    if (walletAddress) {
-      mintCngnOnChain(walletAddress, amount).catch(err => {
-        console.warn("[cNGN On-Chain Mint Notice]:", err);
-      });
-    }
-
+    await refreshCngnBalance();
     return true;
   };
 
-  const swapCngnToNaira = (amount: number): boolean => {
-    if (amount <= 0 || cngnBalance < amount) return false;
-    setCngnBalance(prev => {
-      const next = prev - amount;
-      localStorage.setItem('kobo_balance', next.toString());
-      return next;
-    });
+  /**
+   * cNGN ➔ Naira (1:1). Burns real cNGN on Arc, then credits simulated fiat.
+   * Symmetric with swapNairaToCngn — otherwise on-chain cNGN supply only ever grew.
+   */
+  const swapCngnToNaira = async (amount: number): Promise<boolean> => {
+    if (!Number.isFinite(amount) || amount <= 0) return false;
+    if (cngnBalance < amount) return false;
+    if (!walletAddress) {
+      throw new Error("Connect a wallet on Arc Testnet to redeem cNGN.");
+    }
+
+    await burnCngnOnChain(walletAddress, amount);
+    await refreshCngnBalance();
+
     setNairaBalance(prev => {
       const next = prev + amount;
       localStorage.setItem('kobo_naira_balance', next.toString());
@@ -530,11 +671,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tx_hash: realTxHash
     };
 
+    // Optimistic debit for instant feedback; the on-chain balanceOf read below is
+    // authoritative and corrects it (the curve also takes a 1% creator fee, so the
+    // exact settled amount is whatever the chain says — never assume).
     setCngnBalance(prev => {
       const next = Math.max(0, prev - cngnAmount);
       localStorage.setItem('kobo_balance', next.toString());
       return next;
     });
+    refreshCngnBalance();
 
     setTokens(prev => {
       const updated = prev.map(t => {
@@ -638,11 +783,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tx_hash: realTxHash
     };
 
+    // Optimistic credit; reconciled against the real ERC-20 balance right after.
     setCngnBalance(prev => {
       const next = prev + finalCngnOut;
       localStorage.setItem('kobo_balance', next.toString());
       return next;
     });
+    refreshCngnBalance();
 
     setTokens(prev => {
       const updated = prev.map(t => {
@@ -750,8 +897,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         connectRealWeb3Wallet,
         logout,
+        isCngnBalanceSyncing,
+        refreshCngnBalance,
         depositNaira,
-        withdrawNaira,
+        withdrawCngn,
         swapNairaToCngn,
         swapCngnToNaira,
         launchToken,

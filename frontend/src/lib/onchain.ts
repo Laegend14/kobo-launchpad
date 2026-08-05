@@ -3,18 +3,27 @@ import { DEPLOYED_ADDRESSES } from './contracts';
 
 export const TOKEN_FACTORY_ADDRESS = DEPLOYED_ADDRESSES.tokenFactory;
 export const CNGN_ADDRESS = DEPLOYED_ADDRESSES.mockCNGN;
-export const BASE_SEPOLIA_CHAIN_ID = "0x14a34"; // 84532 in hex
-export const CHAIN_RPC_URL = "https://sepolia.base.org";
-export const CHAIN_RPC_FALLBACKS = [
-  "https://base-sepolia.drpc.org",
-  "https://base-sepolia-rpc.publicnode.com",
-  "https://base-sepolia.blockpi.network/v1/rpc/public",
-];
 
-// Aliases for compatibility
-export const ARC_TESTNET_CHAIN_ID = BASE_SEPOLIA_CHAIN_ID;
-export const ARC_RPC_URL = CHAIN_RPC_URL;
-export const ARC_RPC_FALLBACKS = CHAIN_RPC_FALLBACKS;
+// ── Arc Testnet (Chain ID 5042002) ───────────────────────────────────────────
+// Values are the ones published in the Arc docs (Connect to Arc / RPC Endpoints).
+// Arc's NATIVE currency is USDC (18 decimals as the gas token) — not ETH. Wallets
+// without custom-gas-token support may still label it "ETH" in their UI, but the
+// underlying asset is USDC.
+export const ARC_TESTNET_CHAIN_ID = "0x4cef52"; // 5042002 decimal
+export const ARC_TESTNET_CHAIN_ID_DECIMAL = 5042002;
+export const ARC_RPC_URL = "https://rpc.testnet.arc.io";
+export const ARC_RPC_FALLBACKS = [
+  "https://rpc.blockdaemon.testnet.arc.io",
+  "https://rpc.drpc.testnet.arc.io",
+  "https://rpc.quicknode.testnet.arc.io",
+];
+export const ARC_WS_URL = "wss://rpc.testnet.arc.io";
+export const ARC_EXPLORER_URL = "https://testnet.arcscan.app";
+export const ARC_FAUCET_URL = "https://faucet.circle.com";
+
+// Aliases kept so existing imports (CHAIN_RPC_URL etc.) keep working.
+export const CHAIN_RPC_URL = ARC_RPC_URL;
+export const CHAIN_RPC_FALLBACKS = ARC_RPC_FALLBACKS;
 
 export const MULTICALL3_ADDRESS = "0xca11bde05977b3631167028862be2a173976ca11";
 export const MULTICALL3_ABI = [
@@ -71,7 +80,8 @@ export interface OnChainLaunchResult {
 }
 
 /**
- * Ensures connected Web3 wallet is switched to Arc Testnet (Chain ID 5042002)
+ * Ensures connected Web3 wallet is switched to Arc Testnet (Chain ID 5042002).
+ * Arc's native gas token is USDC, so that's what we register with the wallet.
  */
 export async function ensureArcTestnetNetwork(): Promise<boolean> {
   if (typeof window === 'undefined' || !(window as any).ethereum) {
@@ -82,14 +92,14 @@ export async function ensureArcTestnetNetwork(): Promise<boolean> {
 
   try {
     const currentChainId = await ethereum.request({ method: 'eth_chainId' });
-    if (currentChainId && currentChainId.toLowerCase() === BASE_SEPOLIA_CHAIN_ID.toLowerCase()) {
+    if (currentChainId && currentChainId.toLowerCase() === ARC_TESTNET_CHAIN_ID.toLowerCase()) {
       return true;
     }
 
     try {
       await ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: BASE_SEPOLIA_CHAIN_ID }],
+        params: [{ chainId: ARC_TESTNET_CHAIN_ID }],
       });
       return true;
     } catch (switchErr: any) {
@@ -97,16 +107,12 @@ export async function ensureArcTestnetNetwork(): Promise<boolean> {
         await ethereum.request({
           method: 'wallet_addEthereumChain',
           params: [{
-            chainId: BASE_SEPOLIA_CHAIN_ID,
-            chainName: 'Base Sepolia',
-            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-            rpcUrls: [
-              'https://sepolia.base.org',
-              'https://base-sepolia.drpc.org',
-              'https://base-sepolia-rpc.publicnode.com',
-              'https://base-sepolia.blockpi.network/v1/rpc/public'
-            ],
-            blockExplorerUrls: ['https://sepolia.basescan.org']
+            chainId: ARC_TESTNET_CHAIN_ID,
+            chainName: 'Arc Testnet',
+            // Arc's native currency IS USDC (18 decimals as the gas token).
+            nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
+            rpcUrls: [ARC_RPC_URL, ...ARC_RPC_FALLBACKS],
+            blockExplorerUrls: [ARC_EXPLORER_URL]
           }]
         });
         return true;
@@ -117,6 +123,55 @@ export async function ensureArcTestnetNetwork(): Promise<boolean> {
     console.warn("Network switch notice:", err.message || err);
     return false;
   }
+}
+
+/**
+ * Recovers a just-launched token from the factory's on-chain registry when the
+ * TokenLaunched log is missing from the receipt. The registry is append-only, so the
+ * newest entries are at the tail — we walk backwards a few slots and match on the
+ * token's own name()/symbol(). This turns "confirmed but unreadable" (which used to
+ * abort the launch and lose the token) into a successful, discoverable launch.
+ */
+async function recoverLaunchFromRegistry(
+  provider: ethers.BrowserProvider,
+  name: string,
+  symbol: string
+): Promise<{ tokenAddress: string; curveAddress: string } | null> {
+  try {
+    const factory = new ethers.Contract(TOKEN_FACTORY_ADDRESS, TOKEN_FACTORY_ABI, provider);
+    const count = Number(await rpcRetry(() => factory.getAllTokensCount()));
+    if (count === 0) return null;
+
+    const wantName = String(name || '').trim().toLowerCase();
+    const wantSymbol = String(symbol || '').trim().toUpperCase();
+
+    // Look at the last few registry slots only — a launch we just mined is at the tail.
+    for (let i = count - 1; i >= Math.max(0, count - 5); i--) {
+      try {
+        const token = String(await rpcRetry(() => factory.allTokens(i)));
+        if (!token || token === ethers.ZeroAddress) continue;
+        const tokenContract = new ethers.Contract(token, MEMECOIN_ABI, provider);
+        const [onChainName, onChainSymbol] = await Promise.all([
+          rpcRetry(() => tokenContract.name()).catch(() => ''),
+          rpcRetry(() => tokenContract.symbol()).catch(() => ''),
+        ]);
+        if (
+          String(onChainName || '').trim().toLowerCase() !== wantName ||
+          String(onChainSymbol || '').trim().toUpperCase() !== wantSymbol
+        ) continue;
+
+        const curve = String(await rpcRetry(() => factory.tokenToCurve(token)));
+        if (!curve || curve === ethers.ZeroAddress) continue;
+        return { tokenAddress: token, curveAddress: curve };
+      } catch {
+        // try the next slot
+      }
+      await sleepMs(CALL_PACE_MS);
+    }
+  } catch (err: any) {
+    console.warn('[On-Chain] Registry recovery failed:', err?.message || err);
+  }
+  return null;
 }
 
 /**
@@ -190,12 +245,26 @@ export async function launchTokenOnChain(
     }
 
     if (!tokenAddress || !curveAddress) {
-      // The tx confirmed but we could not read the TokenLaunched event. Rather than
-      // fabricate an address (which would create a phantom token no other user can
-      // discover on-chain), surface the tx hash so the launch can be reconciled.
+      // The tx confirmed but the TokenLaunched event could not be decoded from the
+      // receipt (some Arc RPCs return a receipt with trimmed/absent logs). The launch
+      // DID happen, so recover the real addresses from the factory's on-chain registry
+      // instead of throwing away a successful, gas-paid deployment.
+      const recovered = await recoverLaunchFromRegistry(provider, name, symbol);
+      if (recovered) {
+        console.warn(
+          `[On-Chain] TokenLaunched log missing from receipt — recovered ${recovered.tokenAddress} from the factory registry.`
+        );
+        tokenAddress = recovered.tokenAddress;
+        curveAddress = recovered.curveAddress;
+      }
+    }
+
+    if (!tokenAddress || !curveAddress) {
+      // Registry recovery also failed. Do NOT fabricate an address (a phantom token
+      // no other user could discover on-chain); surface the tx hash for reconciliation.
       throw new Error(
-        `Launch transaction ${receipt.hash} confirmed but the TokenLaunched event could not be read. ` +
-        `Do not retry — check the explorer for the deployed token before launching again.`
+        `Launch transaction ${receipt.hash} confirmed but the deployed token address could not be read back. ` +
+        `Do not retry — check ${ARC_EXPLORER_URL}/tx/${receipt.hash} for the deployed token before launching again.`
       );
     }
 
@@ -249,6 +318,65 @@ export async function mintCngnOnChain(toAddress: string, amountCngn: number): Pr
     }
     console.error("[On-Chain cNGN Mint Error]:", err?.message || err);
     throw new Error(err?.shortMessage || err?.reason || err?.message || "On-chain cNGN mint failed.");
+  }
+}
+
+/**
+ * Reads the REAL ERC-20 cNGN balance for a wallet from Arc.
+ *
+ * This is the authoritative cNGN figure. Buys spend real cNGN (approve + curve.buy)
+ * and sells credit real cNGN, so a purely local localStorage counter drifts away from
+ * the chain the moment any transaction fails, is rejected, or is sent from another
+ * device with the same wallet. Read-only, paced and retried like every other Arc read.
+ *
+ * Returns null (never 0) when the balance can't be read, so callers can distinguish
+ * "RPC hiccup" from "genuinely empty wallet" and avoid flashing ₦0 on a transient error.
+ */
+export async function getCngnBalanceOnChain(walletAddress: string): Promise<number | null> {
+  if (!walletAddress || !ethers.isAddress(walletAddress)) return null;
+  try {
+    const provider = getReadProvider();
+    const cngnContract = new ethers.Contract(CNGN_ADDRESS, CNGN_ABI, provider);
+    const raw = await rpcRetry(() => cngnContract.balanceOf(walletAddress));
+    return Number(ethers.formatUnits(raw, 18));
+  } catch (err) {
+    console.warn("[Kobo] cNGN balance read notice:", err);
+    return null;
+  }
+}
+
+/**
+ * Burns real ERC-20 cNGN from a wallet (cNGN ➔ Naira off-ramp and withdrawals).
+ *
+ * The mock cNGN faucet is symmetric: `faucetMint` creates supply when Naira is swapped
+ * in, so swapping out / withdrawing has to `faucetBurn` it again. Without this, selling
+ * cNGN only decremented a localStorage number while the on-chain supply kept growing —
+ * the displayed balance and the real balance diverged permanently after the first swap.
+ */
+export async function burnCngnOnChain(fromAddress: string, amountCngn: number): Promise<string> {
+  if (typeof window === 'undefined' || !(window as any).ethereum) {
+    throw new Error("No Web3 wallet detected. Connect a wallet to burn cNGN on-chain.");
+  }
+
+  try {
+    await ensureArcTestnetNetwork();
+    const provider = new ethers.BrowserProvider((window as any).ethereum);
+    const signer = await provider.getSigner();
+    const cngnContract = new ethers.Contract(CNGN_ADDRESS, CNGN_ABI, signer);
+
+    const amountWei = ethers.parseUnits(amountCngn.toString(), 18);
+    const tx = await cngnContract.faucetBurn(fromAddress, amountWei, { gasLimit: 500000 });
+    const receipt = await tx.wait();
+    return receipt.hash;
+  } catch (err: any) {
+    const isUserRejection = err?.code === 4001 ||
+      err?.code === 'ACTION_REJECTED' ||
+      /rejected|denied|user rejected|cancelled/i.test(err?.message || '');
+    if (isUserRejection) {
+      throw new Error("cNGN burn was rejected or cancelled in your wallet.");
+    }
+    console.error("[On-Chain cNGN Burn Error]:", err?.message || err);
+    throw new Error(err?.shortMessage || err?.reason || err?.message || "On-chain cNGN burn failed.");
   }
 }
 
@@ -381,14 +509,17 @@ export async function getOnChainReserves(curveAddress: string): Promise<{
   migrated: boolean;
 } | null> {
   try {
-    const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
+    // Reuse the memoized read provider (with fallback rotation) instead of building a
+    // fresh JsonRpcProvider per call — a new provider on every reserve refresh was
+    // extra connection churn against Arc's rate limits.
+    const provider = getReadProvider();
     const curveContract = new ethers.Contract(curveAddress, BONDING_CURVE_ABI, provider);
 
     const [vCngn, vToken, rCngn, isMigrated] = await Promise.all([
-      curveContract.virtualCngnReserve(),
-      curveContract.virtualTokenReserve(),
-      curveContract.realCngnReserve(),
-      curveContract.migrated()
+      rpcRetry(() => curveContract.virtualCngnReserve()),
+      rpcRetry(() => curveContract.virtualTokenReserve()),
+      rpcRetry(() => curveContract.realCngnReserve()),
+      rpcRetry(() => curveContract.migrated())
     ]);
 
     return {
@@ -432,6 +563,13 @@ export interface ChainTokenRecord {
 }
 
 // Trade record shape — mirrors metrics.TradeItem.
+//
+// ORDERING (Arc docs, "Indexing Events" step 7): Arc produces SUB-SECOND blocks, so
+// several consecutive blocks can share the same `block.timestamp`. Timestamps are
+// therefore NOT a valid ordering key — two trades a block apart can look simultaneous,
+// which is exactly why trading metrics came out empty/scrambled. The canonical order is
+// (blockNumber, logIndex), which is total and stable. `timestamp` is kept only for
+// human display and 24h volume bucketing.
 export interface ChainTradeRecord {
   id: string;
   token_address: string;
@@ -440,14 +578,32 @@ export interface ChainTradeRecord {
   cngn_amount: number;
   token_amount: number;
   price: number;
-  timestamp: number; // ms
+  timestamp: number; // ms — DISPLAY ONLY, never an ordering key on Arc
+  blockNumber: number; // primary ordering key
+  logIndex: number;    // secondary ordering key (within a block)
   tx_hash: string;
+}
+
+/** Canonical Arc ordering: blockNumber asc, then logIndex asc. */
+export function compareTradesChronological(a: ChainTradeRecord, b: ChainTradeRecord): number {
+  if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
+  return a.logIndex - b.logIndex;
 }
 
 const CALL_PACE_MS = 120;          // sleep between consecutive state reads
 const MAX_PARALLEL_READS = 3;      // never hammer the RPC
-const TRADE_BATCH_BLOCKS = 1_800;  // fits within Base Sepolia 2000 max block range limit
-const TRADE_TAIL_LOOKBACK_BLOCKS = 1_800; // safe initial lookback window
+// Arc block windows. Arc mines sub-second blocks, so a Base-sized 1,800-block window
+// covered only ~15 minutes of history — that alone made trade history look empty.
+// eth_getLogs range per request (adaptively halved if an RPC rejects the range).
+const TRADE_BATCH_BLOCKS = 5_000;
+const TRADE_MIN_BATCH_BLOCKS = 500;
+// How far back a client looks the very first time it sees a curve.
+const TRADE_TAIL_LOOKBACK_BLOCKS = 50_000;
+// Hard cap on eth_getLogs requests per curve per poll, so one cold start can't stall
+// the sync loop. Arc has DETERMINISTIC FINALITY (no reorgs), so a partial scan is safe:
+// we return how far we actually got and resume from exactly there next poll — every
+// block is processed exactly once, with no confirmation-depth delay needed.
+const MAX_TRADE_BATCHES_PER_CALL = 12;
 
 // Retry/backoff: Arc returns -32011 (request limit) and -32005 (limit exceeded)
 // when hammered; transient network errors also happen. Retry with exponential
@@ -684,42 +840,76 @@ export async function getAllTokensFromChain(): Promise<ChainTokenRecord[]> {
 }
 
 /**
- * Best-effort incremental Trade history for one curve. `fromBlock` is the block the
- * caller last saw (0 = first observation → bounded lookback). Never scans from block
- * 0; caps each window and retries so Arc rate-limits can't kill the tail.
+ * Incremental Trade history for one curve, indexed the way the Arc docs prescribe.
+ *
+ * - Backfill/tail via `eth_getLogs` over bounded block ranges (ethers' queryFilter).
+ * - Every record carries `blockNumber` + `logIndex`; those are the ONLY ordering keys
+ *   (Arc's sub-second blocks share `block.timestamp`, so timestamps are ambiguous).
+ * - Dedupe key is `${txHash}-${logIndex}` — a single tx can emit more than one Trade,
+ *   and the old txHash-only id silently collapsed those into one.
+ * - Arc has deterministic finality (no reorgs), so a block is processed exactly once:
+ *   we report `scannedToBlock` and the caller resumes from there. No confirmation-depth
+ *   lag, no reorg handling.
+ *
+ * `fromBlock` is the last block the caller already scanned (0 = first observation →
+ * bounded lookback). Never scans from block 0.
  */
 export async function getRecentTradesFromChain(
   curveAddress: string,
   fromBlock: number,
   latestBlock?: number
 ): Promise<ChainTradeRecord[]> {
+  const { trades } = await getRecentTradesFromChainDetailed(curveAddress, fromBlock, latestBlock);
+  return trades;
+}
+
+export async function getRecentTradesFromChainDetailed(
+  curveAddress: string,
+  fromBlock: number,
+  latestBlock?: number
+): Promise<{ trades: ChainTradeRecord[]; scannedToBlock: number }> {
   const provider = getReadProvider();
   const curveContract = new ethers.Contract(curveAddress, BONDING_CURVE_ABI, provider);
 
   let latest = latestBlock ?? 0;
   if (!latest) {
     try { latest = await rpcRetry(() => provider.getBlockNumber()); }
-    catch { return []; }
+    catch { return { trades: [], scannedToBlock: fromBlock }; }
   }
 
   const from = fromBlock > 0
     ? fromBlock + 1
     : Math.max(0, latest - TRADE_TAIL_LOOKBACK_BLOCKS);
-  if (from >= latest) return [];
+  if (from > latest) return { trades: [], scannedToBlock: fromBlock };
 
   const out: ChainTradeRecord[] = [];
+  const seen = new Set<string>();
   let cursor = from;
-  while (cursor <= latest) {
-    const to = Math.min(cursor + TRADE_BATCH_BLOCKS - 1, latest);
+  let span = TRADE_BATCH_BLOCKS;
+  let scannedTo = from - 1;
+  let batches = 0;
+
+  while (cursor <= latest && batches < MAX_TRADE_BATCHES_PER_CALL) {
+    const to = Math.min(cursor + span - 1, latest);
     try {
       const logs = await rpcRetry(() => curveContract.queryFilter(curveContract.filters.Trade(), cursor, to));
       for (const log of logs) {
         try {
           const parsed = curveContract.interface.parseLog({ topics: [...log.topics], data: log.data });
           if (!parsed || parsed.name !== 'Trade') continue;
+
+          const blockNumber = Number(log.blockNumber);
+          // ethers v6 exposes the in-block log position as `index`.
+          const logIndex = Number((log as any).index ?? (log as any).logIndex ?? 0);
+          // A single tx can emit multiple Trade logs, so the tx hash alone is not
+          // unique — key on (txHash, logIndex).
+          const id = `${log.transactionHash}-${logIndex}`;
+          if (seen.has(id)) continue;
+          seen.add(id);
+
           const isBuy = Boolean(parsed.args.isBuy);
           out.push({
-            id: log.transactionHash,
+            id,
             token_address: '', // filled by caller
             trader_wallet: String(parsed.args.trader).toLowerCase(),
             side: isBuy ? 'buy' : 'sell',
@@ -727,17 +917,36 @@ export async function getRecentTradesFromChain(
             token_amount: Number(ethers.formatUnits(parsed.args.tokenAmount, 18)),
             price: Number(ethers.formatUnits(parsed.args.price, 18)),
             timestamp: Number(parsed.args.timestamp) * 1000,
+            blockNumber,
+            logIndex,
             tx_hash: log.transactionHash,
           });
         } catch { /* skip unparseable log */ }
       }
+      scannedTo = to;
+      cursor = to + 1;
+      batches++;
     } catch (err: any) {
+      const msg = String(err?.shortMessage || err?.message || '').toLowerCase();
+      const rangeTooWide = /range|too many results|limit exceeded|block range|query returned more/i.test(msg);
+      if (rangeTooWide && span > TRADE_MIN_BATCH_BLOCKS) {
+        // Adaptive halving: shrink the window and retry the SAME range rather than
+        // skipping it — skipping would leave a permanent hole in the trade history.
+        span = Math.max(TRADE_MIN_BATCH_BLOCKS, Math.floor(span / 2));
+        console.warn(`[Chain] Trade range ${cursor}..${to} rejected — retrying with ${span}-block window.`);
+        continue;
+      }
       console.warn(`[Chain] Trade tail ${cursor}..${to} failed for ${curveAddress}:`, err?.message || err);
+      // Stop here and resume from this exact block next poll (deterministic finality
+      // means nothing before `scannedTo` can change, so no rescan is required).
+      break;
     }
     await sleepMs(CALL_PACE_MS);
-    cursor = to + 1;
   }
-  return out;
+
+  // Canonical Arc ordering — blockNumber first, logIndex to break ties.
+  out.sort(compareTradesChronological);
+  return { trades: out, scannedToBlock: Math.max(scannedTo, fromBlock) };
 }
 
 // ── Provider: primary RPC + fallback rotation, auto-reconnect on failure ──────
@@ -763,6 +972,20 @@ function getReadProvider(): ethers.JsonRpcProvider {
 }
 
 const sleepMs = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+/**
+ * Current Arc head block. Block NUMBER is the canonical clock on Arc — sub-second
+ * blocks make timestamps ambiguous — so every indexing cursor is denominated in blocks.
+ * Returns 0 if the head can't be read, letting callers fall back gracefully.
+ */
+export async function getLatestBlockNumber(): Promise<number> {
+  try {
+    const provider = getReadProvider();
+    return Number(await rpcRetry(() => provider.getBlockNumber()));
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Refreshes live reserve state for a single token's BondingCurve.
