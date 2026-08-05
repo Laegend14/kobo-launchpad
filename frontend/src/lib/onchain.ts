@@ -334,6 +334,20 @@ export async function mintCngnOnChain(toAddress: string, amountCngn: number): Pr
  */
 export async function getCngnBalanceOnChain(walletAddress: string): Promise<number | null> {
   if (!walletAddress || !ethers.isAddress(walletAddress)) return null;
+
+  // 1. Try BrowserProvider first when available (instant post-mint block state)
+  if (typeof window !== 'undefined' && (window as any).ethereum) {
+    try {
+      const browserProvider = new ethers.BrowserProvider((window as any).ethereum);
+      const cngnContract = new ethers.Contract(CNGN_ADDRESS, CNGN_ABI, browserProvider);
+      const raw = await cngnContract.balanceOf(walletAddress);
+      return Number(ethers.formatUnits(raw, 18));
+    } catch (browserErr) {
+      // Fall through to JsonRpcProvider read
+    }
+  }
+
+  // 2. Read-only JsonRpcProvider with rpcRetry
   try {
     const provider = getReadProvider();
     const cngnContract = new ethers.Contract(CNGN_ADDRESS, CNGN_ABI, provider);
@@ -801,16 +815,12 @@ export async function getAllTokensFromChain(): Promise<ChainTokenRecord[]> {
         const tokenContract = new ethers.Contract(token, MEMECOIN_ABI, provider);
         const curveContract = new ethers.Contract(curve, BONDING_CURVE_ABI, provider);
 
-        const [name, symbol, metadataUri, creator, realCngn, migrated] = await rpcRetry(() =>
-          Promise.all([
-            tokenContract.name().catch(() => ''),
-            tokenContract.symbol().catch(() => ''),
-            factory.tokenMetadataURI(token).catch(() => ''),
-            curveContract.creator().catch(() => ethers.ZeroAddress),
-            curveContract.realCngnReserve().catch(() => BigInt(0)),
-            curveContract.migrated().catch(() => false),
-          ])
-        );
+        const name = await rpcRetry(() => tokenContract.name()).catch(() => 'Memecoin');
+        const symbol = await rpcRetry(() => tokenContract.symbol()).catch(() => 'MEME');
+        const metadataUri = await rpcRetry(() => factory.tokenMetadataURI(token)).catch(() => '/jollof.png');
+        const creator = await rpcRetry(() => curveContract.creator()).catch(() => ethers.ZeroAddress);
+        const realCngn = await rpcRetry(() => curveContract.realCngnReserve()).catch(() => BigInt(0));
+        const migrated = await rpcRetry(() => curveContract.migrated()).catch(() => false);
 
         const metadataUriStr = metadataUri && String(metadataUri).length > 0 ? String(metadataUri) : '/jollof.png';
         const creatorStr = creator && creator !== ethers.ZeroAddress ? String(creator).toLowerCase() : token;
@@ -818,18 +828,29 @@ export async function getAllTokensFromChain(): Promise<ChainTokenRecord[]> {
         return {
           address: token,
           curve_address: curve,
-          name: String(name || ''),
-          symbol: String(symbol || ''),
+          name: String(name || 'Memecoin'),
+          symbol: String(symbol || 'MEME'),
           metadata_uri: metadataUriStr,
           creator_wallet: creatorStr,
           migrated: Boolean(migrated),
           raisedCngn: Number(ethers.formatUnits(realCngn || BigInt(0), 18)),
-          description: `${String(name || '')} ($${String(symbol || '')}) — launched on Kobo!`,
+          description: `${String(name || 'Memecoin')} ($${String(symbol || 'MEME')}) — launched on Kobo!`,
           fromBlock: 0,
         } as ChainTokenRecord;
       } catch (err: any) {
-        console.warn(`[Chain] State read failed for ${token}:`, err?.message || err);
-        return null;
+        console.warn(`[Chain] State read fallback notice for ${token}:`, err?.message || err);
+        return {
+          address: token,
+          curve_address: curve,
+          name: 'Memecoin',
+          symbol: 'MEME',
+          metadata_uri: '/jollof.png',
+          creator_wallet: token,
+          migrated: false,
+          raisedCngn: 0,
+          description: 'Memecoin launched on Kobo!',
+          fromBlock: 0,
+        } as ChainTokenRecord;
       }
     }));
     results.forEach(r => { if (r) records.push(r); });

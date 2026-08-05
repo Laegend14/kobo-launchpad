@@ -536,8 +536,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     await mintCngnOnChain(walletAddress, amount);
 
+    setCngnBalance(prev => {
+      const next = prev + amount;
+      localStorage.setItem('kobo_balance', next.toString());
+      return next;
+    });
+
     setNairaBalance(prev => {
-      const next = prev - amount;
+      const next = Math.max(0, prev - amount);
       localStorage.setItem('kobo_naira_balance', next.toString());
       return next;
     });
