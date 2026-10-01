@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KOBO | Memecoin Launchpad on Base (cNGN)</title>
+  <meta name="description" content="The premier fair-launch memecoin launchpad on Base powered by cNGN (Naira). Instant liquidity, zero presales, and seamless Paystack onboarding.">
+  <link rel="stylesheet" href="/styles.css?v=3">
+  <!-- Brand Favicons -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <!-- Paystack Inline JS (v2 & v1 fallback) -->
+  <script src="https://js.paystack.co/v2/inline.js"></script>
+  <script src="https://js.paystack.co/v1/inline.js"></script>
+  <!-- Ethers UMD -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/confetti.browser.min.js"></script>
+  <!-- Chart.js for Token Price & Bonding Curve Terminal -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- =================== SIDEBAR + PAGE SHELL =================== -->
+<div style="display: flex; min-height: 100vh;">
+
+  <!-- LEFT SIDEBAR -->
+  <aside id="koboSidebar" style="width: 248px; min-width: 248px; height: 100vh; position: sticky; top: 0; background: linear-gradient(180deg, #070B10 0%, #05080C 100%); border-right: 1px solid rgba(255, 255, 255, 0.07); display: flex; flex-direction: column; z-index: 100; overflow-y: auto;">
+
+    <!-- Brand Header -->
+    <div style="padding: 22px 18px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 12px; cursor: pointer;" onclick="sidebarNav('explore');">
+        <div style="width: 42px; height: 42px; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(0,255,135,0.4); flex-shrink: 0; border: 1.5px solid rgba(0,255,135,0.3); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+          <img src="/kobo-logo.png" alt="KOBO" style="width: 100%; height: 100%; object-fit: cover;">
+        </div>
+        <div>
+          <div style="font-size: 20px; font-weight: 900; background: linear-gradient(to right, #FFF 40%, #00FF87 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px;">KOBO</div>
+          <div style="font-size: 10px; color: var(--text-muted); font-weight: 600; margin-top: 1px;">Fair-Launch • Base L2</div>
+        </div>
+      </div>
+      <span style="font-size: 9px; font-weight: 800; background: rgba(0, 255, 135, 0.12); color: #00FF87; padding: 2px 7px; border-radius: 5px; border: 1px solid rgba(0, 255, 135, 0.25); letter-spacing: 0.5px;">BASE</span>
+    </div>
+
+    <!-- Live Network Pill -->
+    <div style="margin: 12px 14px 8px; background: rgba(15, 20, 31, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; transition: border-color 0.2s;" onmouseover="this.style.borderColor='rgba(0,255,135,0.35)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 8px; height: 8px; border-radius: 50%; background: #00FF87; box-shadow: 0 0 8px #00FF87; flex-shrink: 0;"></div>
+        <div>
+          <div style="font-size: 11px; font-weight: 800; color: #FFF; letter-spacing: 0.2px;">Base Sepolia</div>
+          <div style="font-size: 10px; color: var(--kobo-green); font-weight: 700;">₦1 cNGN = ₦1 NGN</div>
+        </div>
+      </div>
+      <span style="font-size: 9px; font-weight: 800; background: rgba(0, 255, 135, 0.12); color: #00FF87; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0, 255, 135, 0.2);">1:1</span>
+    </div>
+
+    <!-- Navigation List -->
+    <nav style="flex: 1; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;">
+
+      <div style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 1px; padding: 8px 10px 4px;">Discover</div>
+
+      <button class="sidebar-nav-btn active" data-page="explore" onclick="sidebarNav('explore', this)" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(0,255,135,0.25); background: rgba(0,255,135,0.12); color: #FFF; font-size: 13px; font-weight: 700; cursor: pointer; width: 100%; text-align: left; transition: all 0.15s;">
+        <span style="font-size: 15px;">🚀</span> Explore Tokens
+      </button>
+
+      <button class="sidebar-nav-btn" data-page="trending" onclick="sidebarNav('trending', this)" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; text-align: left; transition: all 0.15s;">
+        <span style="font-size: 15px;">🔥</span> Trending
+      </button>
+
+      <button class="sidebar-nav-btn" data-page="new" onclick="sidebarNav('new', this)" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; text-align: left; transition: all 0.15s;">
+        <span style="font-size: 15px;">⚡</span> New Listings
+      </button>
+
+      <button class="sidebar-nav-btn" data-page="graduating" onclick="sidebarNav('graduating', this)" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; text-align: left; transition: all 0.15s;">
+        <span style="font-size: 15px;">🏆</span> Graduating Soon
+      </button>
+
+      <div style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 1px; padding: 14px 10px 4px;">My Wallet</div>
+
+      <button onclick="openAccountHub('tab-portfolio')" class="sidebar-action-btn" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; text-align: left; transition: all 0.15s;">
+        <span style="font-size: 15px;">🎒</span> My Portfolio
+      </button>
+
+      <button onclick="openAccountHub('tab-buysell')" class="sidebar-action-btn" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; text-align: left; transition: all 0.15s;">
+        <span style="font-size: 15px;">💱</span> Buy / Sell cNGN
+      </button>
+
+      <button onclick="openAccountHub('tab-send')" class="sidebar-action-btn" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; text-align: left; transition: all 0.15s;">
+        <span style="font-size: 15px;">📤</span> Send Assets
+      </button>
+
+      <button onclick="openAccountHub('tab-deposit')" class="sidebar-action-btn" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; text-align: left; transition: all 0.15s;">
+        <span style="font-size: 15px;">💳</span> Deposit Naira
+      </button>
+
+      <button onclick="openAccountHub('tab-gas')" class="sidebar-action-btn" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; text-align: left; transition: all 0.15s;">
+        <span style="font-size: 15px;">⛽</span> Gas Station
+      </button>
+
+    </nav>
+
+    <!-- Bottom Actions: Launch Token + Connect / Account Button -->
+    <div style="padding: 14px 12px; border-top: 1px solid rgba(255, 255, 255, 0.07); display: flex; flex-direction: column; gap: 10px; background: rgba(4, 7, 11, 0.85);">
+      
+      <!-- Launch Token Button -->
+      <button id="btnOpenCreate" class="btn-kobo" style="width: 100%; padding: 12px; font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; box-shadow: 0 4px 18px rgba(0,255,135,0.25);">
+        🚀 Launch Token
+      </button>
+
+      <!-- Connect / Account Hub Button -->
+      <button id="btnOpenAccountHub" type="button" class="sidebar-connect-card" style="background: rgba(15, 20, 31, 0.9); border: 1px solid rgba(0, 255, 135, 0.25); border-radius: 12px; padding: 10px 12px; cursor: pointer; width: 100%; transition: all 0.2s; display: flex; align-items: center; box-shadow: 0 2px 12px rgba(0,0,0,0.35);">
+        
+        <!-- Disconnected State: Clear "Connect" CTA -->
+        <div id="hubNavDisconnectedState" style="display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 3px 0;">
+          <div style="width: 24px; height: 24px; border-radius: 8px; background: rgba(0, 255, 135, 0.15); border: 1px solid rgba(0, 255, 135, 0.3); display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0;">
+            👛
+          </div>
+          <span style="font-weight: 800; font-size: 13px; color: #FFF; letter-spacing: 0.2px;">Connect</span>
+          <span style="color: var(--kobo-green); font-size: 13px; margin-left: auto; font-weight: 800;">›</span>
+        </div>
+
+        <!-- Connected State: Identicon + Shortened Address + Balance + Caret -->
+        <div id="hubNavConnectedState" style="display: none; align-items: center; gap: 10px; width: 100%;">
+          <div style="width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, rgba(0,255,135,0.25), rgba(0,135,81,0.25)); border: 1px solid rgba(0,255,135,0.4); display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
+            <span style="font-size: 14px;">🪙</span>
+            <div id="hubNavDot" style="width: 7px; height: 7px; border-radius: 50%; background: #00FF87; box-shadow: 0 0 6px #00FF87; position: absolute; top: -2px; right: -2px;"></div>
+          </div>
+          <div style="min-width: 0; flex: 1; text-align: left;">
+            <div id="hubNavAddress" style="font-weight: 700; color: #FFF; font-size: 11px; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">0x...</div>
+            <div id="hubNavBalance" style="font-weight: 800; color: var(--kobo-green); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">₦0 cNGN</div>
+          </div>
+          <span style="color: var(--text-muted); font-size: 12px; flex-shrink: 0;">▾</span>
+        </div>
+
+      </button>
+
+      <div id="dynamic-widget-root" style="display: none;"></div>
+    </div>
+  </aside>
+
+  <!-- PAGE CONTENT -->
+  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+
+  <!-- Main Content -->
+  <main style="max-width: 1040px; margin: 0 auto; padding: 24px; flex: 1; width: 100%;">
+
+    <!-- Sign-up / Low Gas Alert Banner -->
+    <section id="gasWarningBanner" style="display: none; margin-bottom: 24px;">
+      <div style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.45), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(147, 197, 253, 0.4); border-radius: 16px; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);">
+        <div style="display: flex; align-items: center; gap: 14px; flex: 1 1 500px;">
+          <div style="font-size: 28px; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(147, 197, 253, 0.3); border-radius: 12px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;">
+            ⛽
+          </div>
+          <div>
+            <div style="font-size: 14px; font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span>Alert: Claim Free Base Sepolia ETH for Gas</span>
+              <span style="font-size: 10px; font-weight: 700; background: rgba(147, 197, 253, 0.2); color: #93C5FD; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(147, 197, 253, 0.3);">TRANSACTION GAS</span>
+            </div>
+            <p style="font-size: 12px; color: #CBD5E1; margin-top: 4px; line-height: 1.4;">
+              Trading is conducted in <b>cNGN</b> (1:1 with Naira). Transactions require a small amount of Base Sepolia ETH (~₦0.05) to cover blockchain gas. Claim free testnet ETH below!
+            </p>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button id="btnBannerOpenGas" type="button" class="btn-kobo" style="background: linear-gradient(135deg, #3B82F6, #1D4ED8); color: #FFF; padding: 9px 18px; font-size: 13px; font-weight: 700; box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);">
+            ⛽ Claim Free ETH
+          </button>
+          <button id="btnDismissGasBanner" type="button" style="background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px 8px;" title="Dismiss alert">✕</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Featured Spotlight (Top Coin) -->
+    <section id="odogwuSection" style="margin-bottom: 28px;">
+      <!-- Populated dynamically via JS -->
+    </section>
+
+    <!-- Live Trade Ticker (Moving Marquee) -->
+    <section style="margin-bottom: 28px;">
+      <div class="live-ticker-container">
+        <div class="live-ticker-label">
+          <span class="live-pulse-dot"></span>
+          <span>⚡ LIVE TRADES:</span>
+        </div>
+        <div class="live-ticker-viewport">
+          <div id="tradeTicker" class="live-ticker-track">
+            <!-- Populated dynamically via JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Category Filter Tabs & Search -->
+    <section style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 24px;">
+      <div style="display: flex; gap: 8px; background: rgba(0, 0, 0, 0.4); padding: 4px; border-radius: 12px; border: 1px solid var(--border-subtle); overflow-x: auto;">
+        <button class="culture-tab active" data-culture="All" style="background: var(--bg-elevated); color: #FFF; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 9px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">All Tokens</button>
+        <button class="culture-tab" data-culture="Trending" style="background: transparent; color: var(--text-secondary); border: none; border-radius: 9px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">Trending 🔥</button>
+        <button class="culture-tab" data-culture="New" style="background: transparent; color: var(--text-secondary); border: none; border-radius: 9px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">New Listings ⚡</button>
+        <button class="culture-tab" data-culture="Graduating" style="background: transparent; color: var(--text-secondary); border: none; border-radius: 9px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">Graduating Soon 🚀</button>
+      </div>
+
+      <div style="position: relative; width: 300px;">
+        <input id="searchInput" type="text" placeholder="Search tokens by name or symbol..." style="width: 100%; background-color: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 14px; color: #FFF; font-size: 13px; outline: none;">
+      </div>
+    </section>
+
+    <!-- Tokens Grid -->
+    <section>
+      <div id="tokensGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modern Clean Footer -->
+  <footer style="background-color: #05070B; border-top: 1px solid var(--border-subtle); padding: 28px 24px; margin-top: 40px;">
+    <div style="max-width: 1280px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <img src="/kobo-logo.png" alt="KOBO" style="width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(0, 255, 135, 0.3);">
+          <span style="font-size: 18px; font-weight: 800; color: #FFF;">KOBO LAUNCHPAD</span>
+          <span style="font-size: 11px; font-weight: 700; color: var(--kobo-green); background: rgba(0, 255, 135, 0.1); padding: 2px 6px; border-radius: 4px;">BASE L2</span>
+        </div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Fair-launch bonding curve memecoin platform. Powered by cNGN, Dynamic Auth & Paystack.</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text-secondary);">
+        <span>Fair Launch</span><span>•</span><span>Locked Liquidity</span><span>•</span><span>Base L2</span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted);">Zero Rugs • 100% Fair Bonding Curve • Base Sepolia</div>
+    </div>
+  </footer>
+  </div><!-- end PAGE CONTENT -->
+</div><!-- end sidebar shell -->
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- 1. Full Token Details & Trading Terminal Modal -->
+  <div id="tradeModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 1040px; width: 95vw; max-height: 94vh; padding: 24px; overflow-y: auto;">
+      
+      <!-- Terminal Header: Token Avatar, Name, Badges & Links -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 14px; flex: 1 1 500px;">
+          <img id="tradeTokenImage" src="" alt="" style="width: 58px; height: 58px; border-radius: 16px; object-fit: cover; border: 2px solid var(--border-subtle); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <h2 id="tradeTokenName" style="font-size: 22px; font-weight: 800; color: #FFF; margin: 0;">-</h2>
+              <span id="tradeTokenSymbol" style="font-size: 15px; color: var(--cowrie-gold-light); font-weight: 700;">$-</span>
+              <span id="tradeTokenTag" style="font-size: 11px; font-weight: 700; background: rgba(0, 255, 135, 0.15); color: var(--kobo-green); padding: 2px 8px; border-radius: 6px;">Meme 🔥</span>
+            </div>
+            
+            <!-- Metadata Links: Contract, Creator, IPFS -->
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; font-size: 11px;">
+              <!-- Copy Contract Button & Basescan Link -->
+              <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(255, 255, 255, 0.05); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-subtle);">
+                <span style="color: var(--text-muted);">Contract:</span>
+                <span id="tradeTokenContractShort" style="color: #FFF; font-family: monospace;">0x...</span>
+                <button type="button" id="btnCopyTokenContract" style="background: none; border: none; color: var(--kobo-green); cursor: pointer; padding: 0 2px;" title="Copy contract address">📋</button>
+                <a id="linkTokenBasescan" href="#" target="_blank" style="color: #93C5FD; text-decoration: none;" title="View on Basescan">↗</a>
+              </div>
+
+              <!-- Creator Address -->
+              <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(255, 255, 255, 0.05); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-subtle);">
+                <span style="color: var(--text-muted);">Creator:</span>
+                <span id="tradeTokenCreatorShort" style="color: #FFF; font-family: monospace;">0x...</span>
+                <button type="button" id="btnCopyTokenCreator" style="background: none; border: none; color: var(--kobo-green); cursor: pointer; padding: 0 2px;" title="Copy creator address">📋</button>
+              </div>
+
+              <!-- IPFS Image CID -->
+              <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0, 255, 135, 0.08); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(0, 255, 135, 0.2);">
+                <span style="color: var(--kobo-green); font-weight: 700;">IPFS:</span>
+                <span id="tradeTokenIpfsShort" style="color: #FFF; font-family: monospace;">Qm...</span>
+                <button type="button" id="btnCopyTokenIpfs" style="background: none; border: none; color: var(--kobo-green); cursor: pointer; padding: 0 2px;" title="Copy IPFS URI">📋</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button class="close-modal" data-modal="tradeModal" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); color: var(--text-muted); width: 34px; height: 34px; border-radius: 10px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
+      </div>
+
+      <!-- Main Terminal Layout: Grid (Left: Chart & Details, Right: Trade Box) -->
+      <div style="display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; align-items: start;" class="terminal-grid">
+        
+        <!-- LEFT COLUMN: Chart, Stats, Uniswap V3 Target & Trade History -->
+        <div>
+          <!-- Stat Bar: Price, Market Cap, Real cNGN in Curve, Total Trades -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 12px 16px; margin-bottom: 16px;">
+            <div>
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Current Price</div>
+              <div id="tradeTokenPriceLarge" style="font-size: 18px; font-weight: 800; color: var(--kobo-green);">- Kobo</div>
+              <div id="tradeTokenPriceNaira" style="font-size: 10px; color: var(--text-secondary);">₦0.00 cNGN</div>
+            </div>
+            <div>
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Market Cap</div>
+              <div id="tradeTokenMarketCap" style="font-size: 18px; font-weight: 800; color: #FFF;">₦-</div>
+              <div style="font-size: 10px; color: #94A3B8;">100% Fair Curve</div>
+            </div>
+            <div>
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Curve Liquidity</div>
+              <div id="tradeTokenCurveCngn" style="font-size: 18px; font-weight: 800; color: var(--cowrie-gold-light);">₦0 cNGN</div>
+              <div style="font-size: 10px; color: #94A3B8;">Target: ₦10M</div>
+            </div>
+            <div>
+              <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Total Trades</div>
+              <div id="tradeTokenTotalTrades" style="font-size: 18px; font-weight: 800; color: #FFF;">0</div>
+              <div style="font-size: 10px; color: var(--kobo-green);">Active Curve</div>
+            </div>
+          </div>
+
+          <!-- Price & Bonding Curve Chart -->
+          <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <span style="font-size: 12px; font-weight: 700; color: #FFF; display: flex; align-items: center; gap: 6px;">
+                <span>📈 Price History & Bonding Curve</span>
+              </span>
+              <div style="display: flex; gap: 4px;">
+                <span style="font-size: 10px; background: rgba(0, 255, 135, 0.15); color: var(--kobo-green); padding: 3px 8px; border-radius: 6px; font-weight: 700;">Live Curve</span>
+              </div>
+            </div>
+            <div style="position: relative; width: 100%; height: 210px;">
+              <canvas id="tokenDetailChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Uniswap V3 Graduation Progress Box -->
+          <div style="background: linear-gradient(135deg, rgba(16, 21, 32, 0.9), rgba(22, 28, 43, 0.9)); border: 1px solid rgba(0, 255, 135, 0.25); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span style="font-weight: 700; color: #FFF; display: flex; align-items: center; gap: 6px;">
+                <span>🚀 Uniswap V3 / DEX Migration Target</span>
+              </span>
+              <span id="tradeCurveProgressPercent" style="color: var(--kobo-green); font-weight: 800;">0.0%</span>
+            </div>
+            <div style="height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 9999px; overflow: hidden; margin-bottom: 8px;">
+              <div id="tradeCurveProgressFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--kobo-green-dark), var(--kobo-green)); border-radius: 9999px; transition: width 0.4s ease;"></div>
+            </div>
+            <div style="font-size: 11px; line-height: 1.4; color: var(--text-secondary);">
+              When market cap reaches <b>₦12,500,000</b> (<b>₦10,000,000 cNGN</b> deposited in the bonding curve), internal trading locks, the creator receives an Odogwu bonus of <b>₦500,000 cNGN</b>, and <b>200,000,000 $SYMBOL</b> + <b>₦9,500,000 cNGN</b> are migrated to create the Uniswap V3 DEX pool on Base Sepolia.
+            </div>
+          </div>
+
+          <!-- Token Concept & Vision -->
+          <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;">
+            <div style="font-size: 12px; font-weight: 700; color: var(--cowrie-gold-light); margin-bottom: 6px;">About Token</div>
+            <p id="tradeTokenDescription" style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 0;">-</p>
+          </div>
+
+          <!-- Live On-Chain Trade History for this Token -->
+          <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 14px 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <div style="font-size: 12px; font-weight: 700; color: #FFF;">Recent Trades for this Token</div>
+              <span id="tradeTokenTradeCountBadge" style="font-size: 10px; color: var(--text-muted);">0 trades</span>
+            </div>
+            <div style="max-height: 160px; overflow-y: auto;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left;">
+                <thead>
+                  <tr style="color: var(--text-muted); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                    <th style="padding: 6px 8px;">Type</th>
+                    <th style="padding: 6px 8px;">cNGN</th>
+                    <th style="padding: 6px 8px;">Tokens</th>
+                    <th style="padding: 6px 8px;">Trader</th>
+                    <th style="padding: 6px 8px;">Time</th>
+                    <th style="padding: 6px 8px; text-align: right;">Tx</th>
+                  </tr>
+                </thead>
+                <tbody id="tradeTokenTradesList">
+                  <tr>
+                    <td colspan="6" style="padding: 16px; text-align: center; color: var(--text-muted);">No trades recorded yet. Be the first to buy!</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Interactive Trading Panel -->
+        <div style="background: rgba(10, 15, 29, 0.85); border: 1px solid var(--border-subtle); border-radius: 16px; padding: 18px; position: sticky; top: 0;">
+          
+          <!-- Active Trader Account & Gas Banner -->
+          <div style="background: rgba(0, 255, 135, 0.06); border: 1px solid rgba(0, 255, 135, 0.2); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; font-size: 11px; line-height: 1.5; color: #CBD5E1;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span>Signer Account:</span>
+              <span id="tradeAccountDisplay" style="color: var(--kobo-green); font-family: monospace; font-weight: 700;">Connect wallet</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.1); padding-top: 4px; margin-top: 4px;">
+              <span>⛽ <b>Gas:</b> Base Sepolia ETH</span>
+              <span id="tradeGasBadge" style="color: #93C5FD; font-weight: 600;">0.00 ETH</span>
+            </div>
+          </div>
+
+          <!-- Real-Time On-Chain Status Box (with prominent close button) -->
+          <div id="tradeStatusBox" style="display: none; padding: 12px 14px; border-radius: 14px; font-size: 12px; margin-bottom: 14px; line-height: 1.5; position: relative; overflow-wrap: break-word;"></div>
+
+          <!-- Graduation Alert Box (if token graduated - continuous DEX trading) -->
+          <div id="tradeGraduatedBox" style="display: none; background: rgba(0, 255, 135, 0.08); border: 1px solid rgba(0, 255, 135, 0.35); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px; color: #E2E8F0; line-height: 1.4;">
+            <div style="font-weight: 800; color: #FFF; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span>🎓 Token Has Graduated!</span>
+                <span style="background: rgba(0, 255, 135, 0.2); color: #00FF87; font-size: 10px; padding: 2px 8px; border-radius: 6px; font-weight: 800; letter-spacing: 0.5px;">🟢 DEX ROUTING ACTIVE</span>
+              </div>
+              <a id="btnTradeDexLink" href="https://sepolia.basescan.org" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; color: #00FF87; text-decoration: underline; font-weight: 700; font-size: 11px;">
+                <span>View Pool on Basescan</span> ↗
+              </a>
+            </div>
+            <div style="font-size: 11px; color: #94A3B8;">
+              100% curve bonding achieved! Buy & Sell trades are live and seamlessly executed through on-chain DEX liquidity.
+            </div>
+          </div>
+
+          <!-- Buy / Sell Mode Tabs -->
+          <div style="display: flex; gap: 8px; background: rgba(0, 0, 0, 0.4); padding: 4px; border-radius: 14px; margin-bottom: 14px;">
+            <button id="tabBuy" type="button" class="trade-tab active" style="flex: 1; padding: 10px; border-radius: 10px; border: none; font-weight: 800; font-size: 13px; cursor: pointer; background: var(--kobo-green); color: #041008; transition: all 0.15s;">Buy</button>
+            <button id="tabSell" type="button" class="trade-tab" style="flex: 1; padding: 10px; border-radius: 10px; border: none; font-weight: 800; font-size: 13px; cursor: pointer; background: transparent; color: var(--text-secondary); transition: all 0.15s;">Sell</button>
+          </div>
+
+          <!-- Trade Form -->
+          <form id="tradeForm">
+            <!-- Two-Card Swap UI matching sample image -->
+            <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; position: relative;">
+
+              <!-- CARD 1: YOU PAY / SELL -->
+              <div style="background: rgba(18, 24, 38, 0.9); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 14px 16px; transition: border-color 0.2s;" onfocuswithin="this.style.borderColor='rgba(0,255,135,0.4)'">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span id="tradeCard1Label" style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">You Pay</span>
+                  <span style="font-size: 11px; color: var(--text-muted);">
+                    <span id="tradeCard1BalLabel">Available:</span> 
+                    <span id="tradeCard1Balance" style="color: var(--kobo-green); font-weight: 700;">₦0</span>
+                    <span id="tradeCard1BalanceUnit">cNGN</span>
+                  </span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                  <input id="tradeAmountInput" type="text" inputmode="numeric" pattern="[0-9,]*" value="5,000" placeholder="0" style="width: 100%; background: none; border: none; font-size: 24px; font-weight: 800; color: #FFF; outline: none; padding: 0;">
+                  <div id="tradeCard1AssetPill" style="display: flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 20px; padding: 6px 12px; font-weight: 700; font-size: 13px; color: #FFF; white-space: nowrap; flex-shrink: 0;">
+                    <span id="tradeCard1Icon">💰</span>
+                    <span id="tradeCard1Unit">cNGN</span>
+                  </div>
+                </div>
+                <div id="tradeCard1SubVal" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">≈ ₦5,000.00</div>
+              </div>
+
+              <!-- CENTRAL INVERT / FLIP BUTTON -->
+              <div style="display: flex; justify-content: center; position: relative; height: 12px; z-index: 2;">
+                <button id="btnInvertTrade" type="button" style="position: absolute; top: -14px; width: 34px; height: 34px; border-radius: 50%; background: #151C2C; border: 2px solid rgba(255, 255, 255, 0.12); color: var(--kobo-green); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.6); transition: all 0.2s;" onmouseover="this.style.transform='rotate(180deg) scale(1.08)';this.style.borderColor='var(--kobo-green)'" onmouseout="this.style.transform='none';this.style.borderColor='rgba(255,255,255,0.12)'" title="Flip Buy / Sell">
+                  🔄
+                </button>
+              </div>
+
+              <!-- CARD 2: YOU RECEIVE / BUY -->
+              <div style="background: rgba(18, 24, 38, 0.9); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 14px 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span id="tradeCard2Label" style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">You Receive</span>
+                  <span style="font-size: 11px; color: var(--text-muted);">
+                    <span id="tradeCard2BalLabel">Holding:</span> 
+                    <span id="tradeCard2Balance" style="color: #93C5FD; font-weight: 700;">0</span>
+                    <span id="tradeCard2BalanceUnit">tokens</span>
+                  </span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                  <div id="tradeReceiveAmount" style="font-size: 24px; font-weight: 800; color: var(--kobo-green); width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">0</div>
+                  <div id="tradeCard2AssetPill" style="display: flex; align-items: center; gap: 6px; background: rgba(0, 255, 135, 0.1); border: 1px solid rgba(0, 255, 135, 0.25); border-radius: 20px; padding: 6px 12px; font-weight: 700; font-size: 13px; color: #FFF; white-space: nowrap; flex-shrink: 0;">
+                    <span id="tradeCard2Icon">🪙</span>
+                    <span id="tradeCard2Unit">$TOKEN</span>
+                  </div>
+                </div>
+                <div id="tradeCard2SubVal" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">≈ ₦0.00</div>
+              </div>
+
+            </div>
+
+            <!-- Percentage Quick-Select Buttons (25% / 50% / 75% / 100% as in sample image) -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px;">
+              <button type="button" class="pct-chip" data-pct="25" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); border-radius: 10px; padding: 8px 0; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">25%</button>
+              <button type="button" class="pct-chip" data-pct="50" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); border-radius: 10px; padding: 8px 0; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">50%</button>
+              <button type="button" class="pct-chip" data-pct="75" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); border-radius: 10px; padding: 8px 0; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">75%</button>
+              <button type="button" class="pct-chip" data-pct="100" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--kobo-green); border-radius: 10px; padding: 8px 0; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">100%</button>
+            </div>
+
+            <!-- Hidden compatibility elements for existing hooks -->
+            <span id="tradeInputLabel" style="display: none;">Spend Amount</span>
+            <span id="tradeUserBalance" style="display: none;">₦0</span>
+            <span id="tradeUserBalanceUnit" style="display: none;">cNGN</span>
+            <span id="tradeInputUnit" style="display: none;">cNGN</span>
+            <span id="estimatedReceiveLabel" style="display: none;">You will receive:</span>
+            <span id="estimatedTokensReceived" style="display: none;">-</span>
+
+            <!-- Trade Breakdown Summary -->
+            <div style="background: rgba(0, 0, 0, 0.3); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; font-size: 11px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--text-muted);">
+                <span>Platform Fee (1.00%)</span>
+                <span id="platformFeeText">₦50.00 cNGN</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--text-muted);">
+                <span>Creator Royalty (0.35%)</span>
+                <span id="creatorFeeText" style="color: var(--cowrie-gold-light);">₦17.50 cNGN</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: var(--text-muted);">
+                <span>Target DEX Pool</span>
+                <span>₦10,000,000 cNGN</span>
+              </div>
+            </div>
+
+            <button id="btnSubmitTrade" type="submit" class="btn-kobo" style="width: 100%; padding: 14px; font-size: 15px;">
+              Buy Now (On-Chain)
+            </button>
+          </form>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 2. Launch New Token Modal -->
+  <div id="createCoinModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 520px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+          <h3 style="font-size: 20px; font-weight: 800; color: #FFF;">Launch New Token 🚀</h3>
+          <p style="font-size: 12px; color: var(--text-secondary);">100% Fair Launch • Zero Pre-Allocation • Locked Curve</p>
+        </div>
+        <button class="close-modal" data-modal="createCoinModal" style="background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer;">✕</button>
+      </div>
+
+      <!-- Active Deployer Account & Gas Banner -->
+      <div style="background: rgba(0, 255, 135, 0.06); border: 1px solid rgba(0, 255, 135, 0.2); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; font-size: 11px; line-height: 1.5; color: #CBD5E1;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <span>Creator Account (On-Chain):</span>
+          <span id="createCoinAccountDisplay" style="color: var(--kobo-green); font-family: monospace; font-weight: 700;">Connect wallet</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.1); padding-top: 4px; margin-top: 4px;">
+          <span>⛽ <b>Gas:</b> Base Sepolia ETH (Est. ~0.0003 ETH)</span>
+          <span id="createCoinGasBadge" style="color: #93C5FD; font-weight: 600;">0.00 ETH</span>
+        </div>
+      </div>
+
+      <!-- Real-Time On-Chain Status Box -->
+      <div id="createCoinStatusBox" style="display: none; padding: 12px 14px; border-radius: 12px; font-size: 12px; margin-bottom: 14px; line-height: 1.4; word-break: break-all;"></div>
+
+      <form id="createCoinForm">
+        <!-- Category Selection (Memecoins Only) -->
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--cowrie-gold-light); margin-bottom: 8px;">Token Category</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button" class="culture-btn active" data-tag="Meme" style="background: var(--kobo-green); color: #041008; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: default;">Meme 🔥</button>
+            <span style="font-size: 11px; color: var(--text-muted);">Memecoin Launchpad (Exclusive)</span>
+          </div>
+        </div>
+
+        <!-- Name & Symbol -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+          <div>
+            <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">Token Name</label>
+            <input id="newCoinName" type="text" required placeholder="e.g. Apex Coin" style="width: 100%; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 14px; color: #FFF; font-size: 14px; outline: none;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">Ticker Symbol</label>
+            <input id="newCoinSymbol" type="text" required maxlength="8" placeholder="e.g. APEX" style="width: 100%; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 14px; color: #FFF; font-size: 14px; font-weight: 700; outline: none;">
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">Description & Vision</label>
+          <textarea id="newCoinDesc" rows="3" placeholder="Enter token concept, community roadmap, and utility..." style="width: 100%; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 14px; color: #FFF; font-size: 13px; outline: none; resize: none;"></textarea>
+        </div>
+
+        <!-- IPFS Decentralized Image Upload -->
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label style="font-size: 12px; font-weight: 700; color: #FFF; display: flex; align-items: center; gap: 6px;">
+              <span>Decentralized Image (IPFS)</span>
+              <span style="font-size: 10px; background: rgba(0, 255, 135, 0.15); color: var(--kobo-green); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0, 255, 135, 0.3);">IPFS v0</span>
+            </label>
+            <span style="font-size: 11px; color: var(--text-muted);">Standard Launchpad Format</span>
+          </div>
+
+          <!-- Drag & Drop Zone -->
+          <div id="ipfsDropzone" class="ipfs-dropzone">
+            <!-- Hidden native file input -->
+            <input type="file" id="coinImageFileInput" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="display: none;">
+
+            <!-- Empty / Idle State -->
+            <div id="ipfsIdleState">
+              <div style="font-size: 32px; margin-bottom: 8px;">📦</div>
+              <div style="font-size: 14px; font-weight: 700; color: #FFF; margin-bottom: 4px;">
+                Choose an image or drag & drop
+              </div>
+              <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px;">
+                PNG, JPG, GIF, WebP up to 10MB • Auto-pinned to IPFS
+              </div>
+              <button type="button" class="btn-secondary" style="padding: 6px 14px; font-size: 12px; border-color: rgba(0, 255, 135, 0.3); pointer-events: none;">
+                📁 Browse Files
+              </button>
+            </div>
+
+            <!-- Uploading / Hashing State -->
+            <div id="ipfsLoadingState" style="display: none; padding: 10px 0;">
+              <div class="ipfs-spinner"></div>
+              <div style="font-size: 13px; font-weight: 700; color: var(--kobo-green);">Computing IPFS Multihash & Pinning...</div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Generating immutable content identifier (CIDv0)</div>
+            </div>
+
+            <!-- Uploaded / Preview State -->
+            <div id="ipfsPreviewState" style="display: none;">
+              <div style="display: flex; align-items: center; gap: 14px; text-align: left;">
+                <img id="ipfsThumbnail" src="" alt="Token Preview" style="width: 64px; height: 64px; border-radius: 14px; object-fit: cover; border: 2px solid var(--kobo-green); box-shadow: 0 4px 14px rgba(0, 255, 135, 0.2);">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                    <span style="font-size: 12px; font-weight: 800; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" id="ipfsFileName">token_icon.png</span>
+                    <span style="font-size: 9px; font-weight: 700; background: rgba(0, 255, 135, 0.2); color: var(--kobo-green); padding: 2px 6px; border-radius: 4px;">✓ PINNED</span>
+                  </div>
+                  <div class="ipfs-badge" id="ipfsCidBadge" title="Click to copy IPFS URI">
+                    <span>ipfs://</span><span id="ipfsCidShort">Qm...</span>
+                  </div>
+                  <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;" id="ipfsFileSize">-</div>
+                </div>
+                <button type="button" id="btnReplaceIpfsImage" class="btn-secondary" style="padding: 6px 10px; font-size: 11px;">
+                  Replace
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hidden Input to store the exact ipfs:// URI for smart contract deployment -->
+          <input id="newCoinImageUrl" type="hidden" value="ipfs://QmaY3VHxZuDwX98SpnmUiA1i6eyAMymeQ1nCPzDpPCn4jY">
+
+          <!-- Or Quick Presets -->
+          <div style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 11px; color: var(--text-muted);">Or pick sample:</span>
+            <div style="display: flex; gap: 6px; overflow-x: auto;">
+              <button type="button" class="preset-img active" data-url="ipfs://QmaY3VHxZuDwX98SpnmUiA1i6eyAMymeQ1nCPzDpPCn4jY" data-name="Lion" style="display: flex; align-items: center; gap: 4px; background: rgba(0, 255, 135, 0.2); border: 1px solid var(--kobo-green); border-radius: 8px; padding: 4px 8px; color: #FFF; font-size: 11px; cursor: pointer;">
+                <span>🦁 Lion</span>
+              </button>
+              <button type="button" class="preset-img" data-url="ipfs://QmU7LSDZdiHLwX7UTozkAnkPkbjYnmC2Fj9BFjoZQxZAub" data-name="Flash" style="display: flex; align-items: center; gap: 4px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; color: #FFF; font-size: 11px; cursor: pointer;">
+                <span>⚡ Flash</span>
+              </button>
+              <button type="button" class="preset-img" data-url="ipfs://Qmez7umprLDJkU4kGKaDNwQSgZUxp7cNd4SSgJtrhnGoAv" data-name="Rocket" style="display: flex; align-items: center; gap: 4px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; color: #FFF; font-size: 11px; cursor: pointer;">
+                <span>🚀 Rocket</span>
+              </button>
+              <button type="button" class="preset-img" data-url="ipfs://QmTeoZL3S4VsGQWFcBSXaSFq4RoRz5vE5j95zmF18n8a3v" data-name="Diamond" style="display: flex; align-items: center; gap: 4px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; color: #FFF; font-size: 11px; cursor: pointer;">
+                <span>💎 Diamond</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button id="btnSubmitNewCoin" type="submit" class="btn-kobo" style="width: 100%; padding: 14px; font-size: 15px;">
+          🚀 Deploy Token (Fair Launch)
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. UNIFIED ALL-IN-ONE ACCOUNT HUB MODAL -->
+  <div id="accountHubModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 620px; padding: 0; overflow: hidden; border: 1px solid rgba(0, 255, 135, 0.25); background: #0A0F1D; border-radius: 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 255, 135, 0.1);">
+      
+      <!-- Account Hub Header: Identity & Status -->
+      <div style="padding: 20px 24px; background: linear-gradient(135deg, rgba(16, 21, 32, 0.98), rgba(22, 28, 43, 0.98)); border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <div style="width: 46px; height: 46px; border-radius: 14px; background: linear-gradient(135deg, rgba(0, 255, 135, 0.2), rgba(0, 135, 81, 0.3)); border: 1px solid var(--kobo-green); display: flex; align-items: center; justify-content: center; font-size: 22px;">
+            🏦
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h3 style="font-size: 17px; font-weight: 800; color: #FFF; margin: 0;">My Account</h3>
+              <span id="hubUserTypeBadge" style="font-size: 10px; font-weight: 700; background: rgba(0, 255, 135, 0.15); color: var(--kobo-green); padding: 2px 7px; border-radius: 5px; border: 1px solid rgba(0, 255, 135, 0.3);">CONNECTED</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+              <span id="hubUserAddress" style="font-size: 12px; color: #94A3B8; font-family: monospace;">0x000...0000</span>
+              <button id="btnCopyHubAddress" type="button" style="background: rgba(0, 255, 135, 0.1); border: 1px solid rgba(0, 255, 135, 0.3); color: var(--kobo-green); font-size: 11px; font-weight: 700; cursor: pointer; padding: 2px 8px; border-radius: 5px;">📋 Copy</button>
+              <a id="hubBasescanLink" href="https://sepolia.basescan.org" target="_blank" style="color: #93C5FD; font-size: 11px; text-decoration: none; font-weight: 600;">Explorer ↗</a>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btnHubSignOut" type="button" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #FCA5A5; font-size: 11px; font-weight: 700; padding: 6px 12px; border-radius: 8px; cursor: pointer;">
+            🚪 Sign Out
+          </button>
+          <button class="close-modal" data-modal="accountHubModal" style="background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer; padding: 4px;">✕</button>
+        </div>
+      </div>
+
+      <!-- Account Balances Snapshot Bar (3 Cards: Naira, cNGN, ETH) -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; padding: 14px 20px; background: rgba(0, 0, 0, 0.35); border-bottom: 1px solid var(--border-subtle);">
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
+          <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; font-weight: 700;">
+            💳 Deposited Naira
+          </div>
+          <div id="hubNairaBalanceDisplay" style="font-size: 17px; font-weight: 800; color: var(--cowrie-gold-light); margin-top: 3px;">
+            ₦0 NGN
+          </div>
+          <div style="font-size: 9px; color: var(--text-muted); margin-top: 2px;">In-App Fiat (Paystack)</div>
+        </div>
+
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
+          <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; font-weight: 700;">
+            💰 cNGN Stablecoin
+          </div>
+          <div id="hubCngnBalanceDisplay" style="font-size: 17px; font-weight: 800; color: var(--kobo-green); margin-top: 3px;">
+            ₦0 cNGN
+          </div>
+          <div style="font-size: 9px; color: var(--text-muted); margin-top: 2px;">Base Sepolia (Trade Coins)</div>
+        </div>
+
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
+          <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; font-weight: 700;">
+            ⛽ Gas Station (ETH)
+          </div>
+          <div id="hubEthBalanceDisplay" style="font-size: 17px; font-weight: 800; color: #93C5FD; margin-top: 3px;">
+            0.0000 ETH
+          </div>
+          <div id="hubGasStatusText" style="font-size: 9px; color: #86EFAC; margin-top: 2px;">Base Sepolia Gas</div>
+        </div>
+      </div>
+
+      <!-- Account Tabs Navigation -->
+      <div style="display: flex; gap: 4px; padding: 10px 16px; background: rgba(10, 15, 29, 0.95); border-bottom: 1px solid var(--border-subtle); overflow-x: auto;">
+        <button class="account-tab-btn active" data-tab="tab-deposit" style="background: var(--kobo-green); color: #041008; border: none; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;">📥 Deposit</button>
+        <button class="account-tab-btn" data-tab="tab-buysell" style="background: transparent; color: var(--text-secondary); border: none; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;">💱 Convert cNGN</button>
+        <button class="account-tab-btn" data-tab="tab-send" style="background: transparent; color: var(--text-secondary); border: none; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;">📤 Send</button>
+        <button class="account-tab-btn" data-tab="tab-withdraw" style="background: transparent; color: var(--text-secondary); border: none; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;">🏦 Withdraw</button>
+        <button class="account-tab-btn" data-tab="tab-gas" style="background: transparent; color: var(--text-secondary); border: none; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;">⛽ Gas</button>
+        <button class="account-tab-btn" data-tab="tab-portfolio" style="background: transparent; color: var(--text-secondary); border: none; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;">🎒 Portfolio</button>
+      </div>
+
+      <!-- Tab Contents Container -->
+      <div style="padding: 20px 24px; max-height: 480px; overflow-y: auto;">
+        
+        <!-- Status Alert inside Hub -->
+        <div id="hubStatusAlert" style="display: none; padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; font-size: 12px; line-height: 1.4;"></div>
+
+        <!-- 1. DEPOSIT TAB (Paystack) -->
+        <div id="hubTabDeposit" class="hub-tab-pane">
+          <div style="margin-bottom: 16px;">
+            <h4 style="font-size: 15px; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">Deposit Naira with Paystack 💳</h4>
+            <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">
+              Fund your wallet using Nigerian Debit Card, Bank Transfer, or USSD via Paystack. Deposits credit your in-app <b>Naira Balance</b>, which you can convert 1:1 into <b>cNGN</b> to trade memecoins on-chain without paying again.
+            </p>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase;">
+              Email Address (For Paystack Receipt)
+            </label>
+            <input id="hubDepositEmail" type="email" value="trader@kobo.xyz" style="width: 100%; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 14px; color: #FFF; font-size: 13px; outline: none; margin-bottom: 14px;">
+
+            <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase;">
+              Deposit Amount in Naira (₦)
+            </label>
+            <div style="position: relative; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden;">
+              <input id="hubDepositAmount" type="text" inputmode="numeric" pattern="[0-9,]*" value="10,000" placeholder="10,000" style="width: 100%; background: none; border: none; padding: 12px 14px; color: #FFF; font-size: 18px; font-weight: 800; outline: none;">
+              <span style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-weight: 800; color: var(--kobo-green); font-size: 13px;">₦ NGN</span>
+            </div>
+          </div>
+
+          <!-- Quick Preset Chips -->
+          <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+            <button type="button" class="hub-deposit-chip" data-val="2000" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">₦2,000</button>
+            <button type="button" class="hub-deposit-chip" data-val="5000" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">₦5,000</button>
+            <button type="button" class="hub-deposit-chip active" data-val="10000" style="background: rgba(0, 255, 135, 0.15); border: 1px solid var(--kobo-green); color: #FFF; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer;">₦10,000</button>
+            <button type="button" class="hub-deposit-chip" data-val="50000" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">₦50,000</button>
+            <button type="button" class="hub-deposit-chip" data-val="100000" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">₦100,000</button>
+          </div>
+
+          <button id="btnHubExecuteDeposit" type="button" class="btn-kobo" style="width: 100%; padding: 14px; font-size: 14px; font-weight: 700;">
+            💳 Pay with Paystack (Test Checkout)
+          </button>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; color: var(--text-muted); font-size: 11px;">
+            <span>🔒 Secured by Paystack</span>
+            <span>•</span>
+            <span>⚡ Instant Credit to In-App Naira Balance</span>
+          </div>
+        </div>
+
+        <!-- 2. CONVERT NAIRA ⇄ cNGN TAB (NO PAYSTACK PROMPT) -->
+        <div id="hubTabBuysell" class="hub-tab-pane" style="display: none;">
+          <div style="margin-bottom: 16px;">
+            <h4 style="font-size: 15px; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">Convert Naira ⇄ cNGN 💱</h4>
+            <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Convert between your deposited Naira and on-chain cNGN stablecoin at 1:1 parity without any card charge or Paystack prompt.</p>
+          </div>
+
+          <!-- Buy/Sell toggle -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: rgba(0,0,0,0.4); padding: 4px; border-radius: 12px; margin-bottom: 18px;">
+            <button id="buysellTabBuy" onclick="switchBuySellTab('buy')" style="padding: 9px; border-radius: 9px; border: none; font-weight: 800; font-size: 13px; cursor: pointer; background: var(--kobo-green); color: #041008;">Convert to cNGN 📥</button>
+            <button id="buysellTabSell" onclick="switchBuySellTab('sell')" style="padding: 9px; border-radius: 9px; border: none; font-weight: 800; font-size: 13px; cursor: pointer; background: transparent; color: var(--text-secondary);">Convert to Naira 📤</button>
+          </div>
+
+          <!-- BUY / CONVERT TO cNGN SIDE -->
+          <div id="buysellPaneBuy">
+            <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 8px;">
+                <span style="color: var(--text-muted);">Amount from Deposited Naira (₦)</span>
+                <span style="color: var(--cowrie-gold-light); font-weight: 700;">
+                  Available: ₦<span id="buysellNairaAvailable">0</span>
+                  <span onclick="setBuyCngnMax()" style="color: var(--kobo-green); cursor: pointer; margin-left: 6px; text-decoration: underline;">[MAX]</span>
+                </span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <input id="buysellBuyAmount" type="text" inputmode="numeric" pattern="[0-9,]*" value="10,000" placeholder="10,000" style="background: none; border: none; font-size: 22px; font-weight: 800; color: #FFF; outline: none; width: 65%;">
+                <span style="font-weight: 800; color: var(--cowrie-gold-light); background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); padding: 5px 12px; border-radius: 8px; font-size: 13px;">₦ NGN</span>
+              </div>
+            </div>
+
+            <div style="background: rgba(0,255,135,0.06); border: 1px solid rgba(0,255,135,0.2); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: var(--text-secondary);">You receive on Base Sepolia (1:1)</span>
+              <span style="font-weight: 800; color: var(--kobo-green); font-size: 16px;">≈ <span id="buysellBuyReceive">10,000</span> cNGN</span>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+              <button type="button" onclick="document.getElementById('buysellBuyAmount').value='2,000';updateBuySellCalc()" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer;">₦2,000</button>
+              <button type="button" onclick="document.getElementById('buysellBuyAmount').value='5,000';updateBuySellCalc()" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer;">₦5,000</button>
+              <button type="button" onclick="document.getElementById('buysellBuyAmount').value='10,000';updateBuySellCalc()" style="background: rgba(0,255,135,0.15); border: 1px solid var(--kobo-green); color: #FFF; border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">₦10,000</button>
+              <button type="button" onclick="document.getElementById('buysellBuyAmount').value='50,000';updateBuySellCalc()" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer;">₦50,000</button>
+            </div>
+
+            <button id="btnExecuteBuyCngn" type="button" class="btn-kobo" style="width: 100%; padding: 14px; font-size: 14px; font-weight: 700;">
+              🔄 Convert Naira to cNGN (Instant 1:1)
+            </button>
+            <div style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 8px;">
+              ⚡ Uses your deposited Naira • Dispatches directly to your wallet on Base Sepolia
+            </div>
+          </div>
+
+          <!-- SELL / CONVERT TO NAIRA SIDE -->
+          <div id="buysellPaneSell" style="display: none;">
+            <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
+                <span>Amount to Convert (cNGN)</span>
+                <span style="color: var(--kobo-green); cursor: pointer;" onclick="document.getElementById('buysellSellAmount').value=Math.floor(userCngnBalance).toLocaleString('en-NG');updateBuySellCalc()">MAX: ₦<span id="buysellSellMax">0</span></span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <input id="buysellSellAmount" type="text" inputmode="numeric" pattern="[0-9,]*" value="5,000" placeholder="5,000" style="background: none; border: none; font-size: 22px; font-weight: 800; color: #FFF; outline: none; width: 65%;">
+                <span style="font-weight: 800; color: var(--kobo-green); background: rgba(0,255,135,0.12); border: 1px solid rgba(0,255,135,0.3); padding: 5px 12px; border-radius: 8px; font-size: 13px;">cNGN</span>
+              </div>
+            </div>
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: var(--text-secondary);">Credited to In-App Naira Balance (1:1)</span>
+              <span style="font-weight: 800; color: var(--cowrie-gold-light); font-size: 16px;">≈ ₦<span id="buysellSellReceive">5,000</span> NGN</span>
+            </div>
+            <button id="btnExecuteSellCngn" type="button" class="btn-kobo" style="width: 100%; padding: 14px; font-size: 14px; font-weight: 700; background: linear-gradient(135deg, #10B981, #059669);">
+              🔄 Convert cNGN to Naira Balance
+            </button>
+            <div style="text-align: center; margin-top: 12px;">
+              <a href="#" onclick="switchAccountTab('tab-withdraw');return false;" style="color: #93C5FD; font-size: 11px; text-decoration: underline;">
+                Or withdraw cNGN directly to your Nigerian Bank Account ➔
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. SEND ASSETS TAB -->
+        <div id="hubTabSend" class="hub-tab-pane" style="display: none;">
+          <div style="margin-bottom: 16px;">
+            <h4 style="font-size: 15px; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">Send Assets 📤</h4>
+            <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Transfer Base Sepolia ETH, cNGN, or any memecoin to another wallet address.</p>
+          </div>
+
+          <!-- Asset Selector -->
+          <div style="margin-bottom: 14px;">
+            <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase;">Select Asset</label>
+            <div id="sendAssetList" style="display: flex; flex-direction: column; gap: 8px;">
+              <!-- ETH -->
+              <label style="display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.4); border: 2px solid transparent; border-radius: 12px; padding: 12px 14px; cursor: pointer; transition: border-color 0.15s;" id="sendAssetEthLabel">
+                <input type="radio" name="sendAsset" value="eth" checked onchange="updateSendAssetUI()" style="accent-color: #00FF87; width: 16px; height: 16px;">
+                <div style="font-size: 22px;">⛽</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 700; color: #FFF;">Base Sepolia ETH</div>
+                  <div style="font-size: 11px; color: #93C5FD;">Balance: <span id="sendEthBal">0.0000</span> ETH</div>
+                </div>
+              </label>
+              <!-- cNGN -->
+              <label style="display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.4); border: 2px solid transparent; border-radius: 12px; padding: 12px 14px; cursor: pointer; transition: border-color 0.15s;" id="sendAssetCngnLabel">
+                <input type="radio" name="sendAsset" value="cngn" onchange="updateSendAssetUI()" style="accent-color: #00FF87; width: 16px; height: 16px;">
+                <div style="font-size: 22px;">💰</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 700; color: #FFF;">cNGN (Naira Stablecoin)</div>
+                  <div style="font-size: 11px; color: var(--kobo-green);">Balance: ₦<span id="sendCngnBal">0</span> cNGN</div>
+                </div>
+              </label>
+              <!-- Token selector -->
+              <label style="display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.4); border: 2px solid transparent; border-radius: 12px; padding: 12px 14px; cursor: pointer; transition: border-color 0.15s;" id="sendAssetTokenLabel">
+                <input type="radio" name="sendAsset" value="token" onchange="updateSendAssetUI()" style="accent-color: #00FF87; width: 16px; height: 16px;">
+                <div style="font-size: 22px;">🪙</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 700; color: #FFF;">Memecoin Token</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">Select from your portfolio</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Token picker (only visible when Memecoin is selected) -->
+          <div id="sendTokenPickerRow" style="display: none; margin-bottom: 14px;">
+            <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase;">Choose Token</label>
+            <select id="sendTokenSelect" style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 14px; color: #FFF; font-size: 13px; outline: none;">
+              <option value="">Loading your tokens...</option>
+            </select>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Balance: <span id="sendTokenBal">0</span> tokens</div>
+          </div>
+
+          <!-- To Address -->
+          <div style="margin-bottom: 14px;">
+            <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase;">Recipient Address</label>
+            <input id="sendToAddress" type="text" placeholder="0x... wallet address" style="width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 14px; color: #FFF; font-size: 13px; font-family: monospace; outline: none;">
+          </div>
+
+          <!-- Amount -->
+          <div style="margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px;">
+              <label style="font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Amount to Send</label>
+              <span id="sendMaxLabel" style="color: var(--kobo-green); cursor: pointer;" onclick="setSendMax()">MAX</span>
+            </div>
+            <div style="position: relative; background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden;">
+              <input id="sendAmount" type="number" placeholder="0.00" min="0" step="any" style="width: 100%; background: none; border: none; padding: 12px 60px 12px 14px; color: #FFF; font-size: 18px; font-weight: 800; outline: none;">
+              <span id="sendAmountUnit" style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-weight: 700; color: var(--text-muted); font-size: 13px;">ETH</span>
+            </div>
+          </div>
+
+          <div id="sendStatusBox" style="display: none; padding: 10px 14px; border-radius: 10px; font-size: 12px; margin-bottom: 14px; line-height: 1.5;"></div>
+
+          <button id="btnExecuteSend" type="button" class="btn-kobo" style="width: 100%; padding: 13px; font-size: 14px; font-weight: 700;">
+            📤 Send Asset (On-Chain)
+          </button>
+          <div style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 8px;">⛽ Gas paid in Base Sepolia ETH • Transaction is irreversible</div>
+        </div>
+
+        <!-- 3. WITHDRAW TAB -->
+        <div id="hubTabWithdraw" class="hub-tab-pane" style="display: none;">
+          <div style="margin-bottom: 16px;">
+            <h4 style="font-size: 15px; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">Withdraw to Nigerian Bank Account 📤</h4>
+            <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">
+              Withdraw your cNGN directly to any Nigerian commercial or microfinance bank via Paystack payout.
+            </p>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase;">
+              Select Bank
+            </label>
+            <select id="hubWithdrawBank" style="width: 100%; background: rgba(0, 0, 0, 0.5); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 11px 14px; color: #FFF; font-size: 13px; outline: none;">
+              <option value="Access Bank">Access Bank</option>
+              <option value="GTBank" selected>Guaranty Trust Bank (GTBank)</option>
+              <option value="Zenith Bank">Zenith Bank</option>
+              <option value="First Bank of Nigeria">First Bank of Nigeria</option>
+              <option value="United Bank for Africa">United Bank for Africa (UBA)</option>
+              <option value="Kuda Bank">Kuda Microfinance Bank</option>
+              <option value="OPay">OPay</option>
+              <option value="Palmpay">Palmpay</option>
+              <option value="Stanbic IBTC Bank">Stanbic IBTC Bank</option>
+              <option value="Moniepoint MFB">Moniepoint MFB</option>
+            </select>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+            <div>
+              <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase;">
+                Account Number
+              </label>
+              <input id="hubWithdrawAccNumber" type="text" maxlength="10" placeholder="0123456789" style="width: 100%; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 14px; color: #FFF; font-size: 14px; font-weight: 700; outline: none;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase;">
+                Account Name
+              </label>
+              <input id="hubWithdrawAccName" type="text" placeholder="e.g. Chukwuma Adebayo" style="width: 100%; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 14px; color: #FFF; font-size: 13px; outline: none;">
+            </div>
+          </div>
+
+          <div style="margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px;">
+              <span style="color: var(--text-secondary); font-weight: 600; text-transform: uppercase;">Withdrawal Amount (cNGN)</span>
+              <span style="color: var(--kobo-green); cursor: pointer;" id="btnMaxWithdraw">Max: <span id="hubMaxWithdrawCngn">₦0</span></span>
+            </div>
+            <div style="position: relative; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden;">
+              <input id="hubWithdrawAmount" type="text" inputmode="numeric" pattern="[0-9,]*" placeholder="5,000" style="width: 100%; background: none; border: none; padding: 12px 14px; color: #FFF; font-size: 18px; font-weight: 800; outline: none;">
+              <span style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-weight: 800; color: var(--kobo-green); font-size: 13px;">cNGN</span>
+            </div>
+          </div>
+
+          <button id="btnExecuteWithdraw" type="button" class="btn-kobo" style="width: 100%; padding: 14px; font-size: 14px; font-weight: 700; background: linear-gradient(135deg, #00FF87, #008751);">
+            📤 Withdraw to Bank Account
+          </button>
+        </div>
+
+        <!-- 4. GAS STATION TAB -->
+        <div id="hubTabGas" class="hub-tab-pane" style="display: none;">
+          <div style="margin-bottom: 16px;">
+            <h4 style="font-size: 15px; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">Gas Station (Base Sepolia ETH) ⛽</h4>
+            <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">
+              All token trading is conducted in Naira (cNGN at 1:1), but Base Sepolia blockchain requires tiny ETH gas fees (~₦0.05 / 0.00005 ETH) to execute contract trades.
+            </p>
+          </div>
+
+          <!-- Gas status card -->
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(147, 197, 253, 0.3); border-radius: 14px; padding: 14px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <div style="font-size: 11px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Current Gas Balance</div>
+              <div id="hubGasCardBalance" style="font-size: 22px; font-weight: 800; color: #93C5FD; margin-top: 2px;">0.0000 ETH</div>
+              <div id="hubGasStatusBadge" style="font-size: 11px; margin-top: 2px; color: #86EFAC;">Checking network...</div>
+            </div>
+            <button id="btnHubRefreshGas" type="button" class="btn-secondary" style="padding: 8px 14px; font-size: 12px; border-color: rgba(147, 197, 253, 0.4); color: #93C5FD;">
+              🔄 Refresh
+            </button>
+          </div>
+
+          <!-- Address copy for faucets -->
+          <div style="background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 12px 14px; margin-bottom: 18px;">
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">Your Receiving Address for Faucets:</div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input id="hubGasAddressInput" readonly type="text" value="" style="flex: 1; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 12px; color: #FFF; font-size: 12px; font-family: monospace; outline: none;">
+              <button id="btnHubCopyGasAddress" type="button" class="btn-secondary" style="padding: 8px 14px; font-size: 12px; white-space: nowrap; border-color: rgba(0, 255, 135, 0.3);">📋 Copy</button>
+            </div>
+          </div>
+
+          <div style="font-size: 12px; font-weight: 700; color: #FFF; margin-bottom: 10px;">Free Faucets to grab ETH:</div>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+            <a href="https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); transition: border-color 0.2s;" onmouseover="this.style.borderColor='var(--kobo-green)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 18px;">🔵</span>
+                <div>
+                  <div style="font-size: 12px; font-weight: 700; color: #FFF;">Coinbase Developer Faucet</div>
+                  <div style="font-size: 10px; color: var(--text-muted);">Free Base Sepolia ETH daily</div>
+                </div>
+              </div>
+              <span style="color: var(--kobo-green); font-size: 12px; font-weight: 700;">Claim ↗</span>
+            </a>
+
+            <a href="https://console.optimism.io/faucet" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); transition: border-color 0.2s;" onmouseover="this.style.borderColor='var(--kobo-green)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 18px;">🛡️</span>
+                <div>
+                  <div style="font-size: 12px; font-weight: 700; color: #FFF;">Superchain Faucet (Base Sepolia)</div>
+                  <div style="font-size: 10px; color: var(--text-muted);">Official Superchain faucet</div>
+                </div>
+              </div>
+              <span style="color: var(--kobo-green); font-size: 12px; font-weight: 700;">Claim ↗</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- 5. MY PORTFOLIO TAB -->
+        <div id="hubTabPortfolio" class="hub-tab-pane" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+              <h4 style="font-size: 15px; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">My Memecoin Portfolio 🎒</h4>
+              <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Your active coin holdings on Base Sepolia</p>
+            </div>
+            <button id="btnHubRefreshPortfolio" type="button" class="btn-secondary" style="padding: 6px 12px; font-size: 11px;">
+              🔄 Refresh
+            </button>
+          </div>
+
+          <div id="hubPortfolioList" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px;">
+              Loading your on-chain portfolio...
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamic Auth Web3 & Social Login Bundle -->
+  <script src="/dynamic-bundle.js"></script>
+  <!-- App Logic -->
+  <script src="/app.js?v=21"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+# ==========================================
+# KOBO LAUNCHPAD - GITIGNORE
+# ==========================================
+
+# Environment variables & secrets (CRITICAL: Never commit keys)
+.env
+.env.local
+.env.*.local
+*.env
+*.pem
+*.key
+
+# Local SQLite databases (Ephemeral & sensitive user states)
+kobo.db
+kobo.db-journal
+kobo.db-wal
+kobo.db-shm
+*.db
+*.sqlite
+*.sqlite3
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js & Build outputs
+.next/
+out/
+build/
+dist/
+.vercel
+
+# Testing & Logs
+coverage/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db

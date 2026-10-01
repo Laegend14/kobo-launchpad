@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0E1724" />
+      <stop offset="100%" stop-color="#05080C" />
+    </radialGradient>
+
+    <!-- Neon Emerald Green Gradient -->
+    <linearGradient id="neonGreen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00FF87" />
+      <stop offset="100%" stop-color="#00A859" />
+    </linearGradient>
+
+    <!-- Cowrie Gold Gradient -->
+    <linearGradient id="cowrieGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE066" />
+      <stop offset="50%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="emeraldGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Base Circle Background -->
+  <circle cx="64" cy="64" r="62" fill="url(#bgGlow)" stroke="#1E293B" stroke-width="2" />
+
+  <!-- Outer Neon Ring with subtle pulse gap -->
+  <circle cx="64" cy="64" r="54" fill="none" stroke="url(#neonGreen)" stroke-width="3.5" filter="url(#emeraldGlow)" opacity="0.95" />
+
+  <!-- Inner Gold Concentric Accent Ring -->
+  <circle cx="64" cy="64" r="46" fill="none" stroke="url(#cowrieGold)" stroke-width="1.8" opacity="0.7" stroke-dasharray="8 4" />
+
+  <!-- Stylized Cowrie Shell / Emblem Backing -->
+  <path d="M64 24 C50 24 38 38 38 58 C38 78 50 96 64 102 C78 96 90 78 90 58 C90 38 78 24 64 24 Z"
+        fill="rgba(0, 255, 135, 0.08)" stroke="url(#cowrieGold)" stroke-width="2" />
+
+  <!-- Cowrie Central Slit Details -->
+  <path d="M64 32 L64 92" stroke="url(#neonGreen)" stroke-width="2" stroke-linecap="round" opacity="0.6" />
+  <path d="M56 42 L62 46 M72 42 L66 46" stroke="url(#cowrieGold)" stroke-width="1.5" stroke-linecap="round" />
+  <path d="M54 54 L62 56 M74 54 L66 56" stroke="url(#cowrieGold)" stroke-width="1.5" stroke-linecap="round" />
+  <path d="M54 66 L62 66 M74 66 L66 66" stroke="url(#cowrieGold)" stroke-width="1.5" stroke-linecap="round" />
+  <path d="M56 78 L62 76 M72 78 L66 76" stroke="url(#cowrieGold)" stroke-width="1.5" stroke-linecap="round" />
+
+  <!-- Dynamic Futuristic "K" Monogram + Naira Crossbar Motif -->
+  <!-- K Vertical Stem -->
+  <path d="M48 38 L54 38 L54 90 L48 90 Z" fill="url(#neonGreen)" filter="url(#emeraldGlow)" />
+  <!-- K Upper Arm -->
+  <path d="M54 62 L78 38 L86 38 L62 65 Z" fill="url(#cowrieGold)" />
+  <!-- K Lower Leg -->
+  <path d="M60 62 L86 90 L78 90 L54 66 Z" fill="url(#neonGreen)" filter="url(#emeraldGlow)" />
+
+  <!-- Subtle Naira Horizontal Double Bar Accent across K stem -->
+  <line x1="44" y1="58" x2="60" y2="58" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.9" />
+  <line x1="44" y1="64" x2="60" y2="64" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.9" />
+</svg>

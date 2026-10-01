@@ -1,0 +1,40 @@
+{
+  "name": "kobo-launchpad",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "node -e \"console.log('✅ Kobo Launchpad ready for production')\"",
+    "lint": "next lint",
+    "compile": "node scripts/compile.js",
+    "deploy:contracts": "node scripts/redeploy-clean.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@dynamic-labs/ethereum": "^4.27.0",
+    "@dynamic-labs/sdk-react-core": "^4.27.0",
+    "canvas-confetti": "^1.9.4",
+    "clsx": "^2.1.1",
+    "ethers": "^6.13.5",
+    "firebase": "^12.19.0",
+    "lucide-react": "^1.16.0",
+    "next": "^14.2.24",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^3.0.2",
+    "tldts": "^7.4.16",
+    "viem": "^2.23.5"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^20.17.19",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "solc": "^0.8.28",
+    "typescript": "^5.7.3"
+  }
+}

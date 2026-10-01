@@ -1,0 +1,450 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+
+:root {
+  --bg-black: #06080C;
+  --bg-card: #0F141F;
+  --bg-card-hover: #161D2C;
+  --bg-elevated: #1B2333;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-green: rgba(0, 255, 135, 0.3);
+  --border-gold: rgba(245, 158, 11, 0.4);
+
+  /* Nigerian Colors */
+  --kobo-green: #00FF87;
+  --kobo-green-dark: #008751;
+  --cowrie-gold: #F59E0B;
+  --cowrie-gold-light: #FCD34D;
+  --adire-indigo: #6366F1;
+  --isiagu-red: #EF4444;
+
+  --text-primary: #FFFFFF;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+
+  --font-main: 'Outfit', sans-serif;
+  --font-mono: 'Space Grotesk', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-black);
+  color: var(--text-primary);
+  font-family: var(--font-main);
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-image: 
+    radial-gradient(circle at 10% 10%, rgba(0, 135, 81, 0.1) 0%, transparent 40%),
+    radial-gradient(circle at 90% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 50% 85%, rgba(245, 158, 11, 0.06) 0%, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Featured Token Glow */
+.featured-glow {
+  box-shadow: 0 0 35px rgba(0, 255, 135, 0.12), inset 0 0 25px rgba(0, 255, 135, 0.04);
+  border: 1px solid rgba(0, 255, 135, 0.35);
+}
+
+/* Verified Badge */
+.verified-badge {
+  background: rgba(0, 255, 135, 0.1);
+  border: 1px solid rgba(0, 255, 135, 0.3);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--kobo-green);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.3px;
+}
+
+/* Buttons */
+.btn-kobo {
+  background: linear-gradient(135deg, var(--kobo-green), var(--kobo-green-dark));
+  color: #041008;
+  font-weight: 800;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 20px rgba(0, 255, 135, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.btn-kobo:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(0, 255, 135, 0.5);
+  filter: brightness(1.08);
+}
+
+.btn-secondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Glassmorphism Cards */
+.card-glass {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  transition: all 0.25s ease;
+}
+
+.card-glass:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(0, 255, 135, 0.25);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(4, 6, 10, 0.88);
+  backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 480px;
+  background-color: #0E131D;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-black);
+}
+::-webkit-scrollbar-thumb {
+  background: #1F2839;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--kobo-green-dark);
+}
+
+/* Account Hub Specific Styles */
+.account-tab-btn {
+  transition: all 0.2s ease;
+}
+.account-tab-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #FFF !important;
+}
+
+.hub-deposit-chip {
+  transition: all 0.15s ease;
+}
+.hub-deposit-chip:hover {
+  border-color: var(--kobo-green) !important;
+  color: #FFF !important;
+  transform: translateY(-1px);
+}
+
+.hub-tab-pane {
+  animation: fadeInPane 0.2s ease-out;
+}
+
+@keyframes fadeInPane {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==========================================
+   IPFS DECENTRALIZED IMAGE UPLOAD STYLES
+   ========================================== */
+.ipfs-dropzone {
+  border: 2px dashed rgba(0, 255, 135, 0.35);
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 14px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.ipfs-dropzone:hover, .ipfs-dropzone.dragover {
+  border-color: var(--kobo-green);
+  background: rgba(0, 255, 135, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 255, 135, 0.15);
+}
+
+.ipfs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 255, 135, 0.12);
+  border: 1px solid rgba(0, 255, 135, 0.3);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--kobo-green);
+  word-break: break-all;
+}
+
+.ipfs-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(0, 255, 135, 0.2);
+  border-top-color: var(--kobo-green);
+  border-radius: 50%;
+  animation: ipfsSpin 0.8s linear infinite;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+@keyframes ipfsSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ==========================================
+   TOKEN TERMINAL & CHART STYLES
+   ========================================== */
+@media (max-width: 860px) {
+  .terminal-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.terminal-trade-row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.15s ease;
+}
+
+.terminal-trade-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.terminal-badge-buy {
+  background: rgba(0, 255, 135, 0.15);
+  color: var(--kobo-green);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.terminal-badge-sell {
+  background: rgba(239, 68, 68, 0.15);
+  color: #F87171;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+/* Sidebar Nav Button Styles */
+.sidebar-nav-btn {
+  transition: all 0.15s ease;
+}
+.sidebar-nav-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #FFF !important;
+}
+.sidebar-nav-btn.active {
+  background: rgba(0, 255, 135, 0.12) !important;
+  border-color: rgba(0, 255, 135, 0.28) !important;
+  color: #FFF !important;
+}
+
+/* Percentage Quick Select Chips */
+.pct-chip {
+  transition: all 0.15s ease;
+}
+.pct-chip:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  color: #FFF !important;
+}
+.pct-chip.active {
+  background: rgba(0, 255, 135, 0.16) !important;
+  border-color: var(--kobo-green) !important;
+  color: var(--kobo-green) !important;
+}
+
+/* Sidebar Action Buttons & Connect Card */
+.sidebar-action-btn {
+  transition: all 0.15s ease;
+}
+.sidebar-action-btn:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #FFF !important;
+  transform: translateX(2px);
+}
+
+.sidebar-connect-card {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sidebar-connect-card:hover {
+  border-color: var(--kobo-green) !important;
+  background: rgba(0, 255, 135, 0.08) !important;
+  box-shadow: 0 4px 18px rgba(0, 255, 135, 0.18) !important;
+  transform: translateY(-1px);
+}
+
+/* ========================================================
+   LIVE TRADES MOVING TICKER (CONTINUOUS SMOOTH MARQUEE)
+   ======================================================== */
+.live-ticker-container {
+  background: rgba(16, 21, 32, 0.7);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.live-ticker-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--kobo-green);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
+  z-index: 3;
+  background: rgba(16, 21, 32, 0.95);
+  padding-right: 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.live-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--kobo-green);
+  box-shadow: 0 0 10px var(--kobo-green);
+  animation: pulse-dot 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+}
+
+.live-ticker-viewport {
+  overflow: hidden;
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  mask-image: linear-gradient(to right, transparent 0%, black 20px, black calc(100% - 20px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 20px, black calc(100% - 20px), transparent 100%);
+}
+
+.live-ticker-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 36px;
+  white-space: nowrap;
+  will-change: transform;
+  animation: ticker-scroll-left 40s linear infinite;
+}
+
+.live-ticker-container:hover .live-ticker-track {
+  animation-play-state: paused;
+}
+
+@keyframes ticker-scroll-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.ticker-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+
+
