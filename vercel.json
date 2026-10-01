@@ -3,49 +3,72 @@
   "builds": [
     {
       "src": "server.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
     }
   ],
   "routes": [
     {
-      "src": "/favicon.ico",
+      "src": "/favicon\\.ico(.*)",
       "dest": "/public/favicon.ico"
     },
     {
-      "src": "/favicon.svg",
+      "src": "/favicon\\.svg(.*)",
       "dest": "/public/favicon.svg"
     },
     {
-      "src": "/apple-touch-icon.png",
+      "src": "/apple-touch-icon\\.png(.*)",
       "dest": "/public/apple-touch-icon.png"
     },
     {
-      "src": "/kobo-logo.png",
+      "src": "/kobo-logo\\.png(.*)",
       "dest": "/public/kobo-logo.png"
     },
     {
-      "src": "/styles.css",
+      "src": "/styles\\.css(.*)",
       "dest": "/public/styles.css"
     },
     {
-      "src": "/app.js",
+      "src": "/app\\.js(.*)",
       "dest": "/public/app.js"
     },
     {
-      "src": "/dynamic-bundle.js",
+      "src": "/dynamic-bundle\\.js(.*)",
       "dest": "/public/dynamic-bundle.js"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/server.js"
     },
     {
       "src": "/ipfs/(.*)",
       "dest": "/server.js"
     },
     {
+      "src": "/api/(.*)",
+      "dest": "/server.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "/public/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
     }
   ]
 }

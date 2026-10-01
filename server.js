@@ -2,6 +2,28 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+
+// Load environment variables from .env.local immediately
+function loadEnv() {
+  const envPath = path.resolve(__dirname, '.env.local');
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const idx = trimmed.indexOf('=');
+      if (idx !== -1) {
+        const key = trimmed.slice(0, idx).trim();
+        const val = trimmed.slice(idx + 1).trim();
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  }
+}
+loadEnv();
+
 const { ethers } = require('ethers');
 const { DatabaseSync } = require('node:sqlite');
 const firebaseDb = require('./lib/firebaseDb');
@@ -64,26 +86,8 @@ if (!fs.existsSync(IPFS_DIR)) {
 }
 
 
-// Load environment variables from .env.local
-function loadEnv() {
-  const envPath = path.resolve(__dirname, '.env.local');
-  if (fs.existsSync(envPath)) {
-    const lines = fs.readFileSync(envPath, 'utf8').split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const idx = trimmed.indexOf('=');
-      if (idx !== -1) {
-        const key = trimmed.slice(0, idx).trim();
-        const val = trimmed.slice(idx + 1).trim();
-        if (!process.env[key]) {
-          process.env[key] = val;
-        }
-      }
-    }
-  }
-}
-loadEnv();
+
+
 
 const PORT = process.env.PORT || 3000;
 const BASE_SEPOLIA_RPC = process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org';
@@ -738,7 +742,20 @@ const server = http.createServer(async (req, res) => {
         Date.now()
       );
 
-      console.log(`📊 [SQLite Trade Logged] ${isBuy ? 'BUY' : 'SELL'} ₦${amountCngn} $${tokenSymbol} by ${traderAddress}`);
+      // Also persist in Firestore (dual-write, fire-and-forget)
+      firebaseDb.saveTradeFirestore({
+        id: tradeId,
+        tokenAddress: tokenAddress || '',
+        tokenSymbol,
+        traderAddress: traderAddress || '0x0000000000000000000000000000000000000000',
+        isBuy: Boolean(isBuy),
+        cngnAmount: parseFloat(amountCngn) || 0,
+        tokenAmount: parseFloat(tokenAmount) || 0,
+        txHash: txHash || '',
+        createdAt: Date.now()
+      }).catch(e => console.warn('[Firestore] trade save notice:', e.message));
+
+      console.log(`📊 [Trade Logged] ${isBuy ? 'BUY' : 'SELL'} ₦${amountCngn} $${tokenSymbol} by ${traderAddress}`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ success: true, tradeId }));
     } catch (e) {
@@ -817,6 +834,19 @@ const server = http.createServer(async (req, res) => {
         dispatchTxHash || userTxHash,
         Date.now()
       );
+
+      // Also persist in Firestore (dual-write, fire-and-forget)
+      firebaseDb.saveTradeFirestore({
+        id: tradeId,
+        tokenAddress,
+        tokenSymbol: symbol,
+        traderAddress,
+        isBuy: Boolean(isBuy),
+        cngnAmount: numCngn,
+        tokenAmount: numTokens,
+        txHash: dispatchTxHash || userTxHash,
+        createdAt: Date.now()
+      }).catch(e => console.warn('[Firestore] dex trade save notice:', e.message));
 
       console.log(`🎉 [DEX Trade Recorded] ${isBuy ? 'BUY' : 'SELL'} ₦${numCngn} $${symbol} by ${traderAddress}`);
 
@@ -1234,6 +1264,18 @@ const server = http.createServer(async (req, res) => {
       } catch (fErr) {
         console.warn('deployed-tokens.json write notice:', fErr.message);
       }
+
+      // Also persist in Firestore (dual-write, fire-and-forget)
+      firebaseDb.saveTokenFirestore({
+        address: registeredToken.address,
+        name: registeredToken.name,
+        symbol: registeredToken.symbol,
+        description: registeredToken.description,
+        imageUri: registeredToken.imageUri,
+        cultureTag: registeredToken.cultureTag,
+        creator: registeredToken.creator,
+        createdAt: Date.now()
+      }).catch(e => console.warn('[Firestore] token save notice:', e.message));
 
       console.log(`🎉 [Token Registered On-Chain] $${registeredToken.symbol} at ${registeredToken.address} by ${registeredToken.creator} (Tx: ${txHash})`);
 
