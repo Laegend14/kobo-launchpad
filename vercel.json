@@ -8,52 +8,12 @@
         "maxLambdaSize": "50mb",
         "includeFiles": ["public/**", "kobo.db", "deployed-tokens.json"]
       }
-    },
-    {
-      "src": "public/**/*",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/favicon\\.ico(.*)",
-      "dest": "/public/favicon.ico"
-    },
-    {
-      "src": "/favicon\\.svg(.*)",
-      "dest": "/public/favicon.svg"
-    },
-    {
-      "src": "/apple-touch-icon\\.png(.*)",
-      "dest": "/public/apple-touch-icon.png"
-    },
-    {
-      "src": "/kobo-logo\\.png(.*)",
-      "dest": "/public/kobo-logo.png"
-    },
-    {
-      "src": "/styles\\.css(.*)",
-      "dest": "/public/styles.css"
-    },
-    {
-      "src": "/app\\.js(.*)",
-      "dest": "/public/app.js"
-    },
-    {
-      "src": "/dynamic-bundle\\.js(.*)",
-      "dest": "/public/dynamic-bundle.js"
-    },
-    {
-      "src": "/ipfs/(.*)",
-      "dest": "/server.js"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/server.js"
-    },
-    {
       "src": "/(.*)",
-      "dest": "/public/index.html"
+      "dest": "/server.js"
     }
   ],
   "headers": [
