@@ -3220,6 +3220,31 @@ function updateBalancesInUI() {
     if (hubNavBal) hubNavBal.innerText = '₦0 cNGN';
   }
 
+  // Mobile Top Bar Wallet Button & Mobile Drawer Account Action
+  const mobileWalletLabel = document.getElementById('mobileWalletLabel');
+  const mobileWalletDot = document.getElementById('mobileWalletDot');
+  const btnMobileDrawerAccount = document.getElementById('btnMobileDrawerAccount');
+
+  if (userWalletAddress) {
+    if (mobileWalletLabel) mobileWalletLabel.innerText = formatNaira(userCngnBalance) + ' cNGN';
+    if (mobileWalletDot) {
+      mobileWalletDot.style.background = '#00FF87';
+      mobileWalletDot.style.boxShadow = '0 0 6px #00FF87';
+    }
+    if (btnMobileDrawerAccount) {
+      btnMobileDrawerAccount.innerText = '🎒 ' + shortenAddress(userWalletAddress) + ' • ' + formatNaira(userCngnBalance);
+    }
+  } else {
+    if (mobileWalletLabel) mobileWalletLabel.innerText = 'Connect 👛';
+    if (mobileWalletDot) {
+      mobileWalletDot.style.background = 'var(--text-muted)';
+      mobileWalletDot.style.boxShadow = 'none';
+    }
+    if (btnMobileDrawerAccount) {
+      btnMobileDrawerAccount.innerText = '👛 Connect Wallet';
+    }
+  }
+
   // 2. Account Hub Modal Header
   const hubUserAddr = document.getElementById('hubUserAddress');
   if (hubUserAddr) {
@@ -3506,3 +3531,94 @@ setInterval(refreshAllData, 3000);
 // Run init
 initApp();
 syncDynamicState();
+
+// ==========================================
+// MOBILE NAVIGATION & DRAWER CONTROLLER
+// ==========================================
+window.toggleMobileDrawer = function() {
+  const drawer = document.getElementById('mobileDrawer');
+  const overlay = document.getElementById('mobileDrawerOverlay');
+  if (drawer && overlay) {
+    const isActive = drawer.classList.contains('active');
+    if (isActive) {
+      window.closeMobileDrawer();
+    } else {
+      window.openMobileDrawer();
+    }
+  }
+};
+
+window.openMobileDrawer = function() {
+  const drawer = document.getElementById('mobileDrawer');
+  const overlay = document.getElementById('mobileDrawerOverlay');
+  if (drawer) drawer.classList.add('active');
+  if (overlay) overlay.classList.add('active');
+  document.body.style.overflow = 'hidden';
+};
+
+window.closeMobileDrawer = function() {
+  const drawer = document.getElementById('mobileDrawer');
+  const overlay = document.getElementById('mobileDrawerOverlay');
+  if (drawer) drawer.classList.remove('active');
+  if (overlay) overlay.classList.remove('active');
+  document.body.style.overflow = '';
+};
+
+window.mobileNav = function(page) {
+  window.closeMobileDrawer();
+
+  // Update mobile bottom nav active state
+  document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-tab-name') === page);
+  });
+
+  // Update mobile drawer active items
+  document.querySelectorAll('.mobile-nav-item').forEach(item => {
+    item.classList.toggle('active', item.getAttribute('data-mobile-page') === page);
+  });
+
+  // Trigger main sidebarNav logic
+  if (window.sidebarNav) {
+    const desktopBtn = document.querySelector(`.sidebar-nav-btn[data-page="${page}"]`);
+    window.sidebarNav(page, desktopBtn);
+  }
+
+  // Smooth scroll up to tokens grid
+  const grid = document.getElementById('tokensGrid');
+  if (grid) {
+    const yOffset = -70;
+    const y = grid.getBoundingClientRect().top + window.pageYOffset + yOffset;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  }
+};
+
+window.mobileOpenHub = function(tabName) {
+  window.closeMobileDrawer();
+  if (!userWalletAddress) {
+    if (window.openDynamicModal) window.openDynamicModal();
+  } else {
+    if (window.openAccountHub) window.openAccountHub(tabName);
+  }
+};
+
+window.mobileDrawerAccountAction = function() {
+  window.closeMobileDrawer();
+  if (!userWalletAddress) {
+    if (window.openDynamicModal) window.openDynamicModal();
+  } else {
+    if (window.openAccountHub) window.openAccountHub('tab-portfolio');
+  }
+};
+
+// Wire Mobile Top Bar Wallet Button
+const btnMobileWallet = document.getElementById('btnMobileWallet');
+if (btnMobileWallet) {
+  btnMobileWallet.addEventListener('click', () => {
+    if (!userWalletAddress) {
+      if (window.openDynamicModal) window.openDynamicModal();
+    } else {
+      if (window.openAccountHub) window.openAccountHub('tab-portfolio');
+    }
+  });
+}
+

@@ -139,7 +139,36 @@
   </aside>
 
   <!-- PAGE CONTENT -->
-  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+  <div class="page-content-wrapper" style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+
+    <!-- MOBILE TOP BAR (Shown on screens <= 900px) -->
+    <header class="mobile-top-bar" id="mobileTopBar">
+      <div class="mobile-brand" onclick="sidebarNav('explore');">
+        <div class="mobile-logo-wrap">
+          <img src="/kobo-logo.png" alt="KOBO">
+        </div>
+        <div>
+          <div class="mobile-brand-title">KOBO</div>
+          <div class="mobile-brand-subtitle">Fair-Launch • Base</div>
+        </div>
+        <span class="mobile-net-badge">BASE</span>
+      </div>
+
+      <div class="mobile-top-actions">
+        <!-- Quick Mobile Wallet / Account Hub Button -->
+        <button id="btnMobileWallet" type="button" class="mobile-wallet-btn">
+          <span id="mobileWalletDot" class="mobile-status-dot"></span>
+          <span id="mobileWalletLabel">Connect 👛</span>
+        </button>
+
+        <!-- Hamburger Menu Button -->
+        <button id="btnMobileMenu" type="button" class="mobile-hamburger-btn" aria-label="Open Navigation Menu" onclick="toggleMobileDrawer()">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+    </header>
 
   <!-- Main Content -->
   <main style="max-width: 1040px; margin: 0 auto; padding: 24px; flex: 1; width: 100%;">
@@ -1064,9 +1093,112 @@
     </div>
   </div>
 
+  <!-- ==================== MOBILE DRAWER & NAVIGATION ==================== -->
+  <div id="mobileDrawerOverlay" class="mobile-drawer-overlay" onclick="closeMobileDrawer()"></div>
+  <aside id="mobileDrawer" class="mobile-drawer">
+    <!-- Drawer Header -->
+    <div class="mobile-drawer-header">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <img src="/kobo-logo.png" alt="KOBO" style="width: 36px; height: 36px; border-radius: 10px; border: 1.5px solid rgba(0,255,135,0.4); box-shadow: 0 0 12px rgba(0,255,135,0.3);">
+        <div>
+          <div style="font-size: 18px; font-weight: 900; background: linear-gradient(to right, #FFF, #00FF87); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">KOBO</div>
+          <div style="font-size: 10px; color: var(--text-muted); font-weight: 600;">Fair-Launch • Base L2</div>
+        </div>
+      </div>
+      <button id="btnCloseMobileDrawer" type="button" class="mobile-drawer-close" onclick="closeMobileDrawer()">✕</button>
+    </div>
+
+    <!-- Live Network Pill -->
+    <div style="margin: 12px 14px; background: rgba(15, 20, 31, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 8px; height: 8px; border-radius: 50%; background: #00FF87; box-shadow: 0 0 8px #00FF87;"></div>
+        <div>
+          <div style="font-size: 11px; font-weight: 800; color: #FFF;">Base Sepolia</div>
+          <div style="font-size: 10px; color: var(--kobo-green); font-weight: 700;">₦1 cNGN = ₦1 NGN</div>
+        </div>
+      </div>
+      <span style="font-size: 9px; font-weight: 800; background: rgba(0, 255, 135, 0.12); color: #00FF87; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0, 255, 135, 0.2);">1:1</span>
+    </div>
+
+    <!-- Drawer Navigation List -->
+    <nav class="mobile-drawer-nav">
+      <div class="mobile-drawer-section-title">Discover</div>
+      <button class="mobile-nav-item active" data-mobile-page="explore" onclick="mobileNav('explore')">
+        <span>🚀</span> Explore Tokens
+      </button>
+      <button class="mobile-nav-item" data-mobile-page="trending" onclick="mobileNav('trending')">
+        <span>🔥</span> Trending
+      </button>
+      <button class="mobile-nav-item" data-mobile-page="new" onclick="mobileNav('new')">
+        <span>⚡</span> New Listings
+      </button>
+      <button class="mobile-nav-item" data-mobile-page="graduating" onclick="mobileNav('graduating')">
+        <span>🏆</span> Graduating Soon
+      </button>
+
+      <div class="mobile-drawer-section-title" style="margin-top: 14px;">My Wallet & Banking</div>
+      <button class="mobile-nav-item" onclick="mobileOpenHub('tab-portfolio')">
+        <span>🎒</span> My Portfolio
+      </button>
+      <button class="mobile-nav-item" onclick="mobileOpenHub('tab-buysell')">
+        <span>💱</span> Convert cNGN ⇄ Naira
+      </button>
+      <button class="mobile-nav-item" onclick="mobileOpenHub('tab-send')">
+        <span>📤</span> Send Assets
+      </button>
+      <button class="mobile-nav-item" onclick="mobileOpenHub('tab-deposit')">
+        <span>💳</span> Deposit Naira (Paystack)
+      </button>
+      <button class="mobile-nav-item" onclick="mobileOpenHub('tab-withdraw')">
+        <span>🏦</span> Withdraw to Bank
+      </button>
+      <button class="mobile-nav-item" onclick="mobileOpenHub('tab-gas')">
+        <span>⛽</span> Gas Station (Base ETH)
+      </button>
+    </nav>
+
+    <!-- Drawer Footer Actions -->
+    <div class="mobile-drawer-footer">
+      <button onclick="closeMobileDrawer(); document.getElementById('btnOpenCreate').click();" class="btn-kobo" style="width: 100%; padding: 13px; font-size: 14px; font-weight: 800; border-radius: 12px; box-shadow: 0 4px 18px rgba(0,255,135,0.3);">
+        🚀 Launch Token
+      </button>
+      <button id="btnMobileDrawerAccount" onclick="mobileDrawerAccountAction()" class="btn-secondary" style="width: 100%; padding: 12px; font-size: 13px; font-weight: 700; border-radius: 12px; justify-content: center; margin-top: 8px;">
+        👛 Connect Wallet
+      </button>
+    </div>
+  </aside>
+
+  <!-- MOBILE BOTTOM NAVIGATION (Fixed at bottom on screens <= 900px) -->
+  <nav class="mobile-bottom-nav" id="mobileBottomNav">
+    <button class="mobile-tab-btn active" data-tab-name="explore" onclick="mobileNav('explore')">
+      <span class="mobile-tab-icon">🚀</span>
+      <span class="mobile-tab-label">Explore</span>
+    </button>
+
+    <button class="mobile-tab-btn" data-tab-name="trending" onclick="mobileNav('trending')">
+      <span class="mobile-tab-icon">🔥</span>
+      <span class="mobile-tab-label">Trending</span>
+    </button>
+
+    <!-- Floating Center Launch Button -->
+    <button class="mobile-center-launch-btn" onclick="document.getElementById('btnOpenCreate').click();" aria-label="Launch Token">
+      <span>🚀</span>
+    </button>
+
+    <button class="mobile-tab-btn" data-tab-name="portfolio" onclick="mobileOpenHub('tab-portfolio')">
+      <span class="mobile-tab-icon">🎒</span>
+      <span class="mobile-tab-label">Wallet</span>
+    </button>
+
+    <button class="mobile-tab-btn" data-tab-name="menu" onclick="toggleMobileDrawer()">
+      <span class="mobile-tab-icon">☰</span>
+      <span class="mobile-tab-label">Menu</span>
+    </button>
+  </nav>
+
   <!-- Dynamic Auth Web3 & Social Login Bundle -->
   <script src="/dynamic-bundle.js"></script>
   <!-- App Logic -->
-  <script src="/app.js?v=21"></script>
+  <script src="/app.js?v=22"></script>
 </body>
 </html>

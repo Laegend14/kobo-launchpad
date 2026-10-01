@@ -446,5 +446,476 @@ body {
   transform: translateY(-1px);
 }
 
+/* ========================================================
+   MOBILE FIRST & RESPONSIVE UX STYLES
+   ======================================================== */
+
+/* Touch & tap ergonomics */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}
+
+/* Default state for mobile bars on desktop */
+.mobile-top-bar {
+  display: none;
+}
+
+.mobile-bottom-nav {
+  display: none;
+}
+
+.mobile-drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.mobile-drawer-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 290px;
+  max-width: 86vw;
+  background: linear-gradient(180deg, #090E1A 0%, #05080F 100%);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 1101;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.85);
+}
+
+.mobile-drawer.active {
+  transform: translateX(0);
+}
+
+.mobile-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mobile-drawer-close {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.mobile-drawer-close:active {
+  background: rgba(239, 68, 68, 0.2);
+  color: #EF4444;
+}
+
+.mobile-drawer-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.mobile-drawer-section-title {
+  font-size: 10px;
+  font-weight: 800;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 8px 10px 4px;
+}
+
+.mobile-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.mobile-nav-item.active {
+  background: rgba(0, 255, 135, 0.12);
+  border-color: rgba(0, 255, 135, 0.25);
+  color: #FFF;
+  font-weight: 700;
+}
+
+.mobile-nav-item:active {
+  background: rgba(255, 255, 255, 0.06);
+  transform: scale(0.98);
+}
+
+.mobile-drawer-footer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ========================================================
+   TABLET & MOBILE BREAKPOINTS (<= 900px)
+   ======================================================== */
+@media (max-width: 900px) {
+  /* Hide desktop sidebar */
+  #koboSidebar {
+    display: none !important;
+  }
+
+  /* Show mobile top bar */
+  .mobile-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(7, 11, 16, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    height: 60px;
+  }
+
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+
+  .mobile-logo-wrap {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid rgba(0, 255, 135, 0.35);
+    box-shadow: 0 0 14px rgba(0, 255, 135, 0.3);
+  }
+
+  .mobile-logo-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .mobile-brand-title {
+    font-size: 18px;
+    font-weight: 900;
+    background: linear-gradient(to right, #FFF 40%, #00FF87 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+  }
+
+  .mobile-brand-subtitle {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .mobile-net-badge {
+    font-size: 8px;
+    font-weight: 800;
+    background: rgba(0, 255, 135, 0.12);
+    color: #00FF87;
+    padding: 2px 5px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 255, 135, 0.25);
+    letter-spacing: 0.5px;
+  }
+
+  .mobile-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mobile-wallet-btn {
+    background: rgba(15, 20, 31, 0.9);
+    border: 1px solid rgba(0, 255, 135, 0.3);
+    border-radius: 10px;
+    padding: 7px 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #FFF;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    transition: all 0.15s;
+    min-height: 38px;
+  }
+
+  .mobile-wallet-btn:active {
+    transform: scale(0.97);
+  }
+
+  .mobile-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #00FF87;
+    box-shadow: 0 0 6px #00FF87;
+    flex-shrink: 0;
+  }
+
+  .mobile-hamburger-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 8px;
+    transition: all 0.15s;
+  }
+
+  .mobile-hamburger-btn:active {
+    background: rgba(0, 255, 135, 0.15);
+    border-color: rgba(0, 255, 135, 0.3);
+  }
+
+  .mobile-hamburger-btn span {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: #FFF;
+    border-radius: 2px;
+  }
+
+  /* Show mobile bottom navigation */
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 990;
+    background: rgba(7, 10, 16, 0.94);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-top: 1px solid rgba(255, 255, 255, 0.09);
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px)) 12px;
+    justify-content: space-around;
+    align-items: center;
+    box-shadow: 0 -4px 25px rgba(0, 0, 0, 0.6);
+  }
+
+  .mobile-tab-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    transition: all 0.15s;
+    min-width: 52px;
+    min-height: 44px;
+  }
+
+  .mobile-tab-btn .mobile-tab-icon {
+    font-size: 17px;
+    line-height: 1;
+  }
+
+  .mobile-tab-btn .mobile-tab-label {
+    letter-spacing: 0.2px;
+  }
+
+  .mobile-tab-btn.active {
+    color: var(--kobo-green);
+    font-weight: 800;
+  }
+
+  .mobile-tab-btn.active .mobile-tab-icon {
+    transform: scale(1.1);
+  }
+
+  .mobile-center-launch-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #00FF87, #008751);
+    color: #041008;
+    font-size: 20px;
+    border: 3px solid #06080C;
+    box-shadow: 0 4px 18px rgba(0, 255, 135, 0.5);
+    transform: translateY(-12px);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .mobile-center-launch-btn:active {
+    transform: translateY(-10px) scale(0.92);
+  }
+
+  /* Page container & main adjustments */
+  main {
+    padding: 16px 14px 105px 14px !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  footer {
+    padding: 24px 16px 115px 16px !important;
+  }
+
+  /* Category tabs & Search responsiveness */
+  .culture-tab {
+    padding: 7px 12px !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0;
+  }
+
+  /* Prevent Safari input zoom by ensuring 16px minimum font size */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ========================================================
+   PHONE SCREENS (<= 640px)
+   ======================================================== */
+@media (max-width: 640px) {
+  /* 1-column tokens grid on phones */
+  #tokensGrid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Modals: bottom-sheet appearance on mobile */
+  .modal-overlay {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 90vh !important;
+    border-radius: 22px 22px 0 0 !important;
+    padding: 20px 16px !important;
+    margin: 0 !important;
+    border-bottom: none !important;
+  }
+
+  /* Trade terminal grid */
+  .terminal-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Trade stat bar: neat 2x2 grid */
+  .terminal-grid div[style*="grid-template-columns: repeat(auto-fit"] {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+  }
+
+  /* Odogwu Featured Banner */
+  #odogwuSection .card-glass {
+    padding: 18px 16px !important;
+  }
+
+  #odogwuSection div[style*="display: flex; align-items: center; justify-content: space-between"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 18px !important;
+  }
+
+  #odogwuSection div[style*="flex: 0 1 360px"] {
+    min-width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+
+  /* Big touch friendly action buttons */
+  .btn-kobo {
+    min-height: 46px !important;
+    font-size: 14px !important;
+  }
+
+  .btn-secondary {
+    min-height: 42px !important;
+  }
+
+  /* Live Ticker compact spacing */
+  .live-ticker-container {
+    padding: 6px 10px !important;
+    gap: 10px !important;
+  }
+
+  .live-ticker-label {
+    font-size: 11px !important;
+    padding-right: 8px !important;
+  }
+}
+
 
 
