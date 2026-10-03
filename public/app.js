@@ -1,6 +1,9 @@
 // State
 let allTokens = [];
 let allTrades = [];
+let localRecentTrades = [];
+let lastDepositLockTimestamp = 0;
+let lastDepositLockedAmount = 0;
 let currentCulture = 'All';
 let currentSearch = '';
 let selectedToken = null;
@@ -606,6 +609,11 @@ window.refreshTradeModalData = async function(optimisticTrade = null) {
   // When a user makes a trade, display it immediately at top of trade list
   if (optimisticTrade) {
     try {
+      optimisticTrade.createdAt = optimisticTrade.createdAt || Date.now();
+      optimisticTrade.tokenAddress = optimisticTrade.tokenAddress || (selectedToken ? selectedToken.address : '');
+      localRecentTrades.unshift({ ...optimisticTrade });
+      if (localRecentTrades.length > 50) localRecentTrades.pop();
+
       const tradesTbody = document.getElementById('tradeTokenTradesList');
       const tradeCountBadge = document.getElementById('tradeTokenTradeCountBadge');
       const totalTradesEl = document.getElementById('tradeTokenTotalTrades');
@@ -715,16 +723,44 @@ window.refreshTradeModalData = async function(optimisticTrade = null) {
         renderTokenChart(detailData.priceHistory, selectedToken.symbol);
       }
 
-      // Render Trade History
+      // Render Trade History (merged with local recent trades so optimistic trades never disappear)
       const tradesTbody = document.getElementById('tradeTokenTradesList');
       const tradeCountBadge = document.getElementById('tradeTokenTradeCountBadge');
       if (tradesTbody && Array.isArray(detailData.trades)) {
-        if (tradeCountBadge) tradeCountBadge.innerText = `${detailData.trades.length} trades recorded`;
-        if (detailData.trades.length === 0) {
+        let mergedTrades = [...detailData.trades];
+        const threeMinAgo = Date.now() - 180000;
+        const relevantLocalTrades = localRecentTrades.filter(lt =>
+          lt.tokenAddress &&
+          selectedToken &&
+          lt.tokenAddress.toLowerCase() === selectedToken.address.toLowerCase() &&
+          lt.createdAt > threeMinAgo
+        );
+
+        for (const lt of relevantLocalTrades) {
+          const exists = mergedTrades.some(mt => mt.txHash && lt.txHash && mt.txHash.toLowerCase() === lt.txHash.toLowerCase());
+          if (!exists) {
+            mergedTrades.unshift({
+              id: lt.id || 'opt-' + lt.createdAt,
+              tokenAddress: lt.tokenAddress,
+              tokenSymbol: selectedToken.symbol,
+              trader: shortenAddress(lt.traderAddress || userWalletAddress),
+              traderAddress: lt.traderAddress || userWalletAddress,
+              isBuy: lt.isBuy,
+              cngnAmount: lt.cngnAmount,
+              tokenAmount: lt.tokenAmount,
+              txHash: lt.txHash,
+              createdAt: lt.createdAt,
+              timeAgo: 'Just now'
+            });
+          }
+        }
+
+        if (tradeCountBadge) tradeCountBadge.innerText = `${mergedTrades.length} trades recorded`;
+        if (mergedTrades.length === 0) {
           tradesTbody.innerHTML = `<tr><td colspan="6" style="padding: 16px; text-align: center; color: var(--text-muted);">No trades recorded yet. Be the first to buy!</td></tr>`;
         } else {
-          const totalVol = detailData.trades.reduce((sum, t) => sum + (t.cngnAmount || 0), 0);
-          tradesTbody.innerHTML = detailData.trades.map(tr => {
+          const totalVol = mergedTrades.reduce((sum, t) => sum + (t.cngnAmount || 0), 0);
+          tradesTbody.innerHTML = mergedTrades.map(tr => {
             const pct = totalVol > 0 ? ((tr.cngnAmount / totalVol) * 100).toFixed(1) : '0.0';
             const tokFmt = tr.tokenAmount >= 1e6
               ? (tr.tokenAmount / 1e6).toFixed(2) + 'M'
@@ -1262,16 +1298,37 @@ document.getElementById('tradeForm').addEventListener('submit', async (e) => {
       return;
     }
 
-    const curveAddress = appConfig?.bondingCurveAddress || '0xE662b31B2e01302064cDc47906AB96177B0585E6';
-    const cngnAddress = appConfig?.cngnAddress || '0xcFF8Fa5dA1bA6c5085F1fdcDc7C27164C0B565Ec';
+    const curveAddress = appConfig?.bondingCurveAddress || '0x50300237A5c8AFb7d7D56F8c08FBaa22EB92E203';
+    const cngnAddress = appConfig?.cngnAddress || '0xDdc8B9e1Afdcc3136212c8642d253285c2Bc237c';
     const treasuryAddress = appConfig?.treasuryAddress || '0x959C2c33419b009ce02113BFAee45d4ae72981f8';
 
     // ========================================================
     // PATHWAY A: GRADUATED COIN (100% ON-CHAIN KOBO AMM DEX ROUTE)
     // ========================================================
     if (selectedToken.graduated) {
-      const ammRouterAddress = appConfig?.ammRouterAddress || '0x2C67Dcb5aFD50200c1D61DC681b481eD77d84AFD';
+      const ammRouterAddress = appConfig?.ammRouterAddress || '0xA862739c8755fa83FE1B75021Af6f7D438EC6c80';
+      const ammFactoryAddress = appConfig?.ammFactoryAddress || '0x01aEA417df786883364721Af2A8238bf02d1AD2F';
       const routerContract = new ethers.Contract(ammRouterAddress, KOBO_AMM_ROUTER_ABI, signer);
+
+      // Verify or initialize AMM Liquidity Pair
+      try {
+        const factoryContract = new ethers.Contract(ammFactoryAddress, KOBO_AMM_FACTORY_ABI, signer);
+        let pairAddress = await factoryContract.getPair(cngnAddress, selectedToken.address);
+        if (!pairAddress || pairAddress === ethers.ZeroAddress) {
+          showTradeStatus(`⚙️ Initializing autonomous AMM Pair & liquidity for $${selectedToken.symbol} on Base Sepolia...`, 'info');
+          const pairRes = await fetch('/api/amm/ensure-pair', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tokenAddress: selectedToken.address, tokenSymbol: selectedToken.symbol })
+          });
+          const pairData = await pairRes.json();
+          if (pairData.success && pairData.pairAddress) {
+            console.log('✅ AMM Pair initialized:', pairData.pairAddress);
+          }
+        }
+      } catch (pairCheckErr) {
+        console.warn('Pair check / auto-init notice:', pairCheckErr);
+      }
 
       if (currentTradeTab === 'buy') {
         // --- DEX BUY (cNGN -> $TOKEN) ---
@@ -1310,26 +1367,53 @@ document.getElementById('tradeForm').addEventListener('submit', async (e) => {
         // 2. Fetch expected tokens out from on-chain AMM Router
         showTradeStatus('🧮 Calculating spot output from Base Sepolia AMM pool...', 'info');
         submitBtn.innerText = 'Calculating Route...';
-        const amountsOut = await routerContract.getAmountsOut(cngnInUnits, [cngnAddress, selectedToken.address]);
+        let amountsOut;
+        try {
+          amountsOut = await routerContract.getAmountsOut(cngnInUnits, [cngnAddress, selectedToken.address]);
+        } catch (quoteErr) {
+          console.warn('getAmountsOut error, ensuring pair:', quoteErr);
+          await fetch('/api/amm/ensure-pair', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tokenAddress: selectedToken.address, tokenSymbol: selectedToken.symbol })
+          }).catch(() => {});
+          amountsOut = await routerContract.getAmountsOut(cngnInUnits, [cngnAddress, selectedToken.address]);
+        }
         const expectedTokens = amountsOut[1];
-        const minTokensOut = (expectedTokens * 95n) / 100n; // 5% slippage protection
+        const minTokensOut = (expectedTokens * 90n) / 100n; // 10% slippage protection for DEX trades
         const tokensExpectedNum = Number(ethers.formatUnits(expectedTokens, 18));
 
         // 3. Execute Swap on-chain
         showTradeStatus(`⏳ Swapping ₦${amount.toLocaleString()} cNGN for ${Math.round(tokensExpectedNum).toLocaleString()} $${selectedToken.symbol}... Please confirm in wallet`, 'info');
         submitBtn.innerText = 'Confirm in Wallet...';
-        const deadline = Math.floor(Date.now() / 1000) + 600; // 10 minutes
-        const swapTx = await routerContract.swapExactTokensForTokens(
-          cngnInUnits,
-          minTokensOut,
-          [cngnAddress, selectedToken.address],
-          activeAddress,
-          deadline
-        );
-
-        showTradeStatus(`⚡ Swap broadcasted (${shortenAddress(swapTx.hash)}). Waiting for Base Sepolia block confirmation...`, 'info');
-        submitBtn.innerText = 'Confirming Swap...';
-        await swapTx.wait();
+        let swapTx;
+        try {
+          const deadline = Math.floor(Date.now() / 1000) + 600; // 10 minutes
+          swapTx = await routerContract.swapExactTokensForTokens(
+            cngnInUnits,
+            minTokensOut,
+            [cngnAddress, selectedToken.address],
+            activeAddress,
+            deadline
+          );
+          showTradeStatus(`⚡ Swap broadcasted (${shortenAddress(swapTx.hash)}). Waiting for Base Sepolia block confirmation...`, 'info');
+          submitBtn.innerText = 'Confirming Swap...';
+          await swapTx.wait();
+        } catch (swapErr) {
+          console.error('DEX Swap failed:', swapErr);
+          let errMsg = swapErr.message || 'Swap transaction failed';
+          if (errMsg.includes('user rejected') || errMsg.includes('ACTION_REJECTED')) {
+            errMsg = 'Transaction was cancelled in wallet.';
+          } else if (errMsg.includes('INSUFFICIENT_OUTPUT_AMOUNT')) {
+            errMsg = 'Price moved! Slippage exceeded. Please try again.';
+          } else if (errMsg.includes('PAIR_DOES_NOT_EXIST')) {
+            errMsg = 'AMM Liquidity Pair is initializing. Please retry in a moment.';
+          }
+          showTradeStatus(`❌ Trade Failed: ${errMsg}`, 'error');
+          submitBtn.disabled = false;
+          submitBtn.innerText = `⚡ Buy $${selectedToken.symbol} (DEX Route)`;
+          return;
+        }
 
         // 4. Log trade to backend for ticker & live chart
         try {
@@ -1401,26 +1485,53 @@ document.getElementById('tradeForm').addEventListener('submit', async (e) => {
         // 2. Fetch expected cNGN out from on-chain AMM Router
         showTradeStatus('🧮 Calculating spot proceeds from Base Sepolia AMM pool...', 'info');
         submitBtn.innerText = 'Calculating Route...';
-        const amountsOut = await routerContract.getAmountsOut(tokenUnits, [selectedToken.address, cngnAddress]);
+        let amountsOut;
+        try {
+          amountsOut = await routerContract.getAmountsOut(tokenUnits, [selectedToken.address, cngnAddress]);
+        } catch (quoteErr) {
+          console.warn('getAmountsOut error on sell, ensuring pair:', quoteErr);
+          await fetch('/api/amm/ensure-pair', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tokenAddress: selectedToken.address, tokenSymbol: selectedToken.symbol })
+          }).catch(() => {});
+          amountsOut = await routerContract.getAmountsOut(tokenUnits, [selectedToken.address, cngnAddress]);
+        }
         const expectedCngn = amountsOut[1];
-        const minCngnOut = (expectedCngn * 95n) / 100n; // 5% slippage protection
+        const minCngnOut = (expectedCngn * 90n) / 100n; // 10% slippage protection
         const cngnExpectedNum = Number(ethers.formatUnits(expectedCngn, 6));
 
         // 3. Execute Swap on-chain
         showTradeStatus(`⏳ Selling ${amount.toLocaleString()} $${selectedToken.symbol} for ₦${Math.round(cngnExpectedNum).toLocaleString()} cNGN... Please confirm in wallet`, 'info');
         submitBtn.innerText = 'Confirm in Wallet...';
-        const deadline = Math.floor(Date.now() / 1000) + 600;
-        const swapTx = await routerContract.swapExactTokensForTokens(
-          tokenUnits,
-          minCngnOut,
-          [selectedToken.address, cngnAddress],
-          activeAddress,
-          deadline
-        );
-
-        showTradeStatus(`⚡ Sale broadcasted (${shortenAddress(swapTx.hash)}). Waiting for Base Sepolia block confirmation...`, 'info');
-        submitBtn.innerText = 'Confirming Sale...';
-        await swapTx.wait();
+        let swapTx;
+        try {
+          const deadline = Math.floor(Date.now() / 1000) + 600;
+          swapTx = await routerContract.swapExactTokensForTokens(
+            tokenUnits,
+            minCngnOut,
+            [selectedToken.address, cngnAddress],
+            activeAddress,
+            deadline
+          );
+          showTradeStatus(`⚡ Sale broadcasted (${shortenAddress(swapTx.hash)}). Waiting for Base Sepolia block confirmation...`, 'info');
+          submitBtn.innerText = 'Confirming Sale...';
+          await swapTx.wait();
+        } catch (swapErr) {
+          console.error('DEX Sale failed:', swapErr);
+          let errMsg = swapErr.message || 'Sale transaction failed';
+          if (errMsg.includes('user rejected') || errMsg.includes('ACTION_REJECTED')) {
+            errMsg = 'Transaction was cancelled in wallet.';
+          } else if (errMsg.includes('INSUFFICIENT_OUTPUT_AMOUNT')) {
+            errMsg = 'Price moved! Slippage exceeded. Please try again.';
+          } else if (errMsg.includes('PAIR_DOES_NOT_EXIST')) {
+            errMsg = 'AMM Liquidity Pair is initializing. Please retry in a moment.';
+          }
+          showTradeStatus(`❌ Trade Failed: ${errMsg}`, 'error');
+          submitBtn.disabled = false;
+          submitBtn.innerText = `⚡ Sell $${selectedToken.symbol} (DEX Route)`;
+          return;
+        }
 
         // 4. Log trade to backend for ticker & live chart
         try {
@@ -1881,6 +1992,8 @@ if (btnHubDeposit) {
 
         if (vData.success) {
           userNairaBalance = (typeof vData.nairaBalance === 'number') ? vData.nairaBalance : (userNairaBalance + amount);
+          lastDepositLockTimestamp = Date.now();
+          lastDepositLockedAmount = userNairaBalance;
           confetti({ particleCount: 120, spread: 80, colors: ['#00FF87', '#FFFFFF', '#F59E0B'] });
           showHubStatus(`
             <div style="font-weight: 800; font-size: 14px; color: var(--kobo-green); margin-bottom: 4px;">🎉 Naira Deposit Confirmed!</div>
@@ -2096,6 +2209,8 @@ if (btnExecuteBuyCngn) {
       const data = await res.json();
       if (data.success) {
         userNairaBalance = (typeof data.remainingNaira === 'number') ? data.remainingNaira : Math.max(0, userNairaBalance - amt);
+        lastDepositLockTimestamp = 0;
+        lastDepositLockedAmount = userNairaBalance;
         userCngnBalance += amt;
         confetti({ particleCount: 120, spread: 80, colors: ['#00FF87', '#FFFFFF', '#F59E0B'] });
         showHubStatus(`
@@ -2153,6 +2268,8 @@ if (btnExecuteSellCngn) {
       const data = await res.json();
       if (data.success) {
         userNairaBalance = (typeof data.nairaBalance === 'number') ? data.nairaBalance : (userNairaBalance + amt);
+        lastDepositLockTimestamp = 0;
+        lastDepositLockedAmount = userNairaBalance;
         userCngnBalance = Math.max(0, userCngnBalance - amt);
         showHubStatus(`
           <div style="font-weight:800;color:var(--kobo-green);margin-bottom:4px;">🎉 Converted to Naira!</div>
@@ -2342,7 +2459,7 @@ if (btnExecuteSend) {
         });
       } else if (selected === 'cngn') {
         assetName = 'cNGN';
-        const cngnAddr = appConfig?.cngnAddress || '0xcFF8Fa5dA1bA6c5085F1fdcDc7C27164C0B565Ec';
+        const cngnAddr = appConfig?.cngnAddress || '0xDdc8B9e1Afdcc3136212c8642d253285c2Bc237c';
         const cngnContract = new ethers.Contract(cngnAddr, CNGN_ABI, signer);
         const units = ethers.parseUnits(amount.toString(), 6);
         tx = await cngnContract.transfer(toAddress, units);
@@ -2910,7 +3027,7 @@ document.getElementById('createCoinForm').addEventListener('submit', async (e) =
       return;
     }
 
-    const curveAddress = appConfig?.bondingCurveAddress || '0xE662b31B2e01302064cDc47906AB96177B0585E6';
+    const curveAddress = appConfig?.bondingCurveAddress || '0x50300237A5c8AFb7d7D56F8c08FBaa22EB92E203';
     const factory = new ethers.Contract(curveAddress, KOBO_CURVE_ABI, signer);
 
     showCreateCoinStatus('⏳ Please confirm the token deployment transaction in your wallet...', 'info');
@@ -3162,7 +3279,13 @@ window.onDynamicWalletConnected = async (address, user) => {
     ]);
     if (cngnRes.success) { userCngnBalance = cngnRes.balance; }
     if (ethRes.success) { userEthBalance = ethRes.balanceEth; }
-    if (nairaRes.success) { userNairaBalance = nairaRes.balanceNaira; }
+    if (nairaRes.success && typeof nairaRes.balanceNaira === 'number') {
+      if (Date.now() - lastDepositLockTimestamp < 30000 && nairaRes.balanceNaira < lastDepositLockedAmount) {
+        userNairaBalance = lastDepositLockedAmount;
+      } else {
+        userNairaBalance = nairaRes.balanceNaira;
+      }
+    }
     updateBalancesInUI();
     checkGasAlertOnLogin(address, userEthBalance);
   } catch (err) {
@@ -3380,7 +3503,11 @@ async function refreshAllData() {
       const nairaRes = await fetch(`/api/naira-balance?address=${userWalletAddress}`);
       const nairaData = await nairaRes.json();
       if (nairaData.success && typeof nairaData.balanceNaira === 'number') {
-        userNairaBalance = nairaData.balanceNaira;
+        if (Date.now() - lastDepositLockTimestamp < 30000 && nairaData.balanceNaira < lastDepositLockedAmount) {
+          userNairaBalance = lastDepositLockedAmount;
+        } else {
+          userNairaBalance = nairaData.balanceNaira;
+        }
       }
 
       const ethRes = await fetch(`/api/eth-balance?address=${userWalletAddress}`);
@@ -3430,9 +3557,9 @@ function syncDynamicState() {
     }
   }
 
-  // 2. If user is not authenticated, clear state - do NOT invent addresses
+  // 2. If user is explicitly not authenticated, clear state
   if (!address) {
-    if (userWalletAddress !== null) {
+    if (isAuth === false && userWalletAddress !== null) {
       userWalletAddress = null;
       userNairaBalance = 0;
       userCngnBalance = 0;
@@ -3452,7 +3579,11 @@ function syncDynamicState() {
       .then(r => r.json())
       .then(d => {
         if (d.success && typeof d.balanceNaira === 'number') {
-          userNairaBalance = d.balanceNaira;
+          if (Date.now() - lastDepositLockTimestamp < 30000 && d.balanceNaira < lastDepositLockedAmount) {
+            userNairaBalance = lastDepositLockedAmount;
+          } else {
+            userNairaBalance = d.balanceNaira;
+          }
           updateBalancesInUI();
         }
       })

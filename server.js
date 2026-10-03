@@ -95,10 +95,10 @@ const BASE_SEPOLIA_CHAIN_ID = 84532;
 function getProvider() {
   return new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC, BASE_SEPOLIA_CHAIN_ID, { staticNetwork: true });
 }
-const CNGN_ADDRESS = process.env.NEXT_PUBLIC_CNGN_ADDRESS || '0xcFF8Fa5dA1bA6c5085F1fdcDc7C27164C0B565Ec';
-const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || '0xE662b31B2e01302064cDc47906AB96177B0585E6';
-const AMM_FACTORY_ADDRESS = process.env.NEXT_PUBLIC_AMM_FACTORY_ADDRESS || '0x56DF97bf9e3aa4A797Ba94f05937bED30Af74610';
-const AMM_ROUTER_ADDRESS = process.env.NEXT_PUBLIC_AMM_ROUTER_ADDRESS || '0x2C67Dcb5aFD50200c1D61DC681b481eD77d84AFD';
+const CNGN_ADDRESS = process.env.NEXT_PUBLIC_CNGN_ADDRESS || '0xDdc8B9e1Afdcc3136212c8642d253285c2Bc237c';
+const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || '0x50300237A5c8AFb7d7D56F8c08FBaa22EB92E203';
+const AMM_FACTORY_ADDRESS = process.env.NEXT_PUBLIC_AMM_FACTORY_ADDRESS || '0x01aEA417df786883364721Af2A8238bf02d1AD2F';
+const AMM_ROUTER_ADDRESS = process.env.NEXT_PUBLIC_AMM_ROUTER_ADDRESS || '0xA862739c8755fa83FE1B75021Af6f7D438EC6c80';
 const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY;
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const PAYSTACK_PUBLIC_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || 'pk_test_e4af71e0fdd90c6de06dfbaa0cd315397f5a230c';
@@ -133,6 +133,7 @@ const KOBO_BONDING_CURVE_ABI = [
 
 const KOBO_AMM_FACTORY_ABI = [
   "function getPair(address tokenA, address tokenB) view returns (address pair)",
+  "function createPair(address tokenA, address tokenB) returns (address pair)",
   "function allPairsLength() view returns (uint256)",
   "function allPairs(uint256) view returns (address)"
 ];
@@ -149,6 +150,7 @@ const KOBO_AMM_ROUTER_ABI = [
   "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)",
   "function getAmountsOut(uint256 amountIn, address[] calldata path) view returns (uint256[] memory amounts)",
   "function getAmountsIn(uint256 amountOut, address[] calldata path) view returns (uint256[] memory amounts)",
+  "function addLiquidity(address tokenA, address tokenB, uint256 amountADesired, uint256 amountBDesired, uint256 amountAMin, uint256 amountBMin, address to, uint256 deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity)",
   "function factory() view returns (address)"
 ];
 
@@ -300,6 +302,72 @@ function formatTimeAgo(timestamp) {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+// Ensure Autonomous AMM pair exists for graduated coins
+async function ensureAmmPairForToken(tokenAddress, symbol = 'TOKEN') {
+  if (!AMM_FACTORY_ADDRESS || !tokenAddress || !CNGN_ADDRESS) return null;
+  try {
+    const provider = getProvider();
+    const factory = new ethers.Contract(AMM_FACTORY_ADDRESS, KOBO_AMM_FACTORY_ABI, provider);
+    let pair = await factory.getPair(CNGN_ADDRESS, tokenAddress);
+    if (pair && pair !== ethers.ZeroAddress) {
+      return pair;
+    }
+
+    if (DEPLOYER_PRIVATE_KEY) {
+      const wallet = new ethers.Wallet(DEPLOYER_PRIVATE_KEY, provider);
+      console.log(`⚡ [AMM Auto-Pair] Initializing pair for ${symbol} (${tokenAddress}) on Base Sepolia...`);
+
+      // Try addLiquidity directly on router (it auto-creates pair)
+      if (AMM_ROUTER_ADDRESS) {
+        try {
+          const cngnContract = new ethers.Contract(CNGN_ADDRESS, MOCK_CNGN_ABI, wallet);
+          const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, wallet);
+          const cngnBal = await cngnContract.balanceOf(wallet.address);
+          const tokBal = await tokenContract.balanceOf(wallet.address);
+
+          if (cngnBal >= 1000000n && tokBal >= 1000000000000000000n) {
+            const seedCngn = cngnBal > 9500000000000n ? 9500000000000n : (cngnBal > 1000000000n ? 1000000000n : cngnBal);
+            const seedTok = tokBal > 200000000000000000000000000n ? 200000000000000000000000000n : (tokBal > 10000000000000000000000000n ? 10000000000000000000000000n : tokBal);
+
+            await (await cngnContract.approve(AMM_ROUTER_ADDRESS, ethers.MaxUint256)).wait();
+            await (await tokenContract.approve(AMM_ROUTER_ADDRESS, ethers.MaxUint256)).wait();
+
+            const router = new ethers.Contract(AMM_ROUTER_ADDRESS, KOBO_AMM_ROUTER_ABI, wallet);
+            const deadline = Math.floor(Date.now() / 1000) + 1200;
+            const liqTx = await router.addLiquidity(
+              CNGN_ADDRESS,
+              tokenAddress,
+              seedCngn,
+              seedTok,
+              0,
+              0,
+              wallet.address,
+              deadline
+            );
+            await liqTx.wait();
+            pair = await factory.getPair(CNGN_ADDRESS, tokenAddress);
+            console.log(`✅ [AMM Auto-Pair] Created & seeded pair: ${pair} (tx: ${liqTx.hash})`);
+            return pair;
+          }
+        } catch (liqErr) {
+          console.warn('Auto addLiquidity notice:', liqErr.message);
+        }
+      }
+
+      // If addLiquidity couldn't seed, at least create the pair on factory
+      const factoryWithWallet = new ethers.Contract(AMM_FACTORY_ADDRESS, KOBO_AMM_FACTORY_ABI, wallet);
+      const tx = await factoryWithWallet.createPair(CNGN_ADDRESS, tokenAddress);
+      await tx.wait();
+      pair = await factory.getPair(CNGN_ADDRESS, tokenAddress);
+      console.log(`✅ [AMM Auto-Pair] Created bare pair: ${pair}`);
+      return pair;
+    }
+  } catch (err) {
+    console.warn('ensureAmmPairForToken error:', err.message);
+  }
+  return null;
 }
 
 // Function to fetch all tokens combined with live Base Sepolia on-chain curve stats & autonomous AMM pools
@@ -496,6 +564,24 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ tokens: tokenList, trades: tradeList }));
   }
 
+  // --- API: Ensure AMM Pair for Graduated Coin ---
+  if (pathname === '/api/amm/ensure-pair' && req.method === 'POST') {
+    try {
+      const data = await parseJson(req);
+      const { tokenAddress, tokenSymbol } = data;
+      if (!tokenAddress) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, message: 'tokenAddress required' }));
+      }
+      const pair = await ensureAmmPairForToken(tokenAddress, tokenSymbol || 'TOKEN');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, tokenAddress, pairAddress: pair }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, message: e.message }));
+    }
+  }
+
   // --- API: Single Token Details, Trade History & Price Chart History ---
   if (pathname === '/api/tokens/details' && req.method === 'GET') {
     const address = url.searchParams.get('address');
@@ -593,21 +679,55 @@ const server = http.createServer(async (req, res) => {
         } catch (e) {}
       }
 
-      // Fetch trades specifically for this token
+      // Fetch trades specifically for this token from SQLite
       const tradesRaw = db.prepare('SELECT * FROM trades WHERE LOWER(token_address) = LOWER(?) ORDER BY created_at DESC LIMIT 50').all(address);
-      const trades = tradesRaw.map(r => ({
-        id: r.id,
-        tokenAddress: r.token_address,
-        tokenSymbol: r.token_symbol,
-        trader: shortenAddress(r.trader_address),
-        traderAddress: r.trader_address,
-        isBuy: Boolean(r.is_buy),
-        cngnAmount: r.cngn_amount,
-        tokenAmount: r.token_amount,
-        txHash: r.tx_hash,
-        createdAt: r.created_at,
-        timeAgo: formatTimeAgo(r.created_at)
-      }));
+      const tradesMap = new Map();
+
+      tradesRaw.forEach(r => {
+        const key = (r.tx_hash && r.tx_hash.startsWith('0x') && r.tx_hash.length > 20) ? r.tx_hash.toLowerCase() : r.id;
+        tradesMap.set(key, {
+          id: r.id,
+          tokenAddress: r.token_address,
+          tokenSymbol: r.token_symbol,
+          trader: shortenAddress(r.trader_address),
+          traderAddress: r.trader_address,
+          isBuy: Boolean(r.is_buy),
+          cngnAmount: r.cngn_amount,
+          tokenAmount: r.token_amount,
+          txHash: r.tx_hash,
+          createdAt: r.created_at,
+          timeAgo: formatTimeAgo(r.created_at)
+        });
+      });
+
+      // ALSO fetch persistent trades from Firestore to prevent disappearing trades across serverless instances
+      try {
+        const firestoreTrades = await firebaseDb.getTradesForTokenFirestore(address, 50);
+        if (Array.isArray(firestoreTrades)) {
+          firestoreTrades.forEach(ft => {
+            const key = (ft.txHash && ft.txHash.startsWith('0x') && ft.txHash.length > 20) ? ft.txHash.toLowerCase() : (ft.id || 'f-' + ft.createdAt);
+            if (!tradesMap.has(key)) {
+              tradesMap.set(key, {
+                id: ft.id || key,
+                tokenAddress: ft.tokenAddress,
+                tokenSymbol: ft.tokenSymbol || row.symbol,
+                trader: shortenAddress(ft.traderAddress || ft.trader),
+                traderAddress: ft.traderAddress || ft.trader,
+                isBuy: Boolean(ft.isBuy),
+                cngnAmount: Number(ft.cngnAmount || 0),
+                tokenAmount: Number(ft.tokenAmount || 0),
+                txHash: ft.txHash || '',
+                createdAt: ft.createdAt || Date.now(),
+                timeAgo: formatTimeAgo(ft.createdAt || Date.now())
+              });
+            }
+          });
+        }
+      } catch (fErr) {
+        console.warn('Firestore token trades query notice:', fErr.message);
+      }
+
+      const trades = Array.from(tradesMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 50);
 
       // Index on-chain AMM Swap events if pool exists
       if (ammPairAddress) {
@@ -878,8 +998,28 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({ success: false, message: 'Invalid address' }));
     }
     try {
+      let balanceNaira = 0;
       const row = db.prepare('SELECT naira_balance FROM user_balances WHERE LOWER(wallet_address) = LOWER(?)').get(address);
-      const balanceNaira = row ? (row.naira_balance || 0) : 0;
+      if (row && typeof row.naira_balance === 'number') {
+        balanceNaira = row.naira_balance;
+      }
+
+      // Check authoritative Firestore cloud balance to prevent flickering across serverless instances
+      try {
+        const firestoreBal = await firebaseDb.getUserBalanceFirestore(address);
+        if (typeof firestoreBal === 'number') {
+          balanceNaira = Math.max(balanceNaira, firestoreBal);
+          // Sync local SQLite instance
+          db.prepare(`
+            INSERT INTO user_balances (wallet_address, naira_balance, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(wallet_address) DO UPDATE SET 
+              naira_balance = excluded.naira_balance,
+              updated_at = excluded.updated_at
+          `).run(address, balanceNaira, Date.now());
+        }
+      } catch (fErr) {}
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ success: true, address, balanceNaira }));
     } catch (e) {
@@ -973,33 +1113,50 @@ const server = http.createServer(async (req, res) => {
         console.warn('Paystack API notice, falling back to payload amount:', paystackErr.message);
       }
 
-      // Credit User's in-app Naira Balance in SQLite
+      // Credit User's in-app Naira Balance in SQLite and Firestore
       let newNairaBalance = paidNgn;
       try {
+        const firestoreBal = await firebaseDb.getUserBalanceFirestore(walletAddress);
+        if (typeof firestoreBal === 'number' && firestoreBal > 0) {
+          newNairaBalance = firestoreBal + paidNgn;
+        } else {
+          const row = db.prepare('SELECT naira_balance FROM user_balances WHERE LOWER(wallet_address) = LOWER(?)').get(walletAddress.toLowerCase());
+          if (row && typeof row.naira_balance === 'number') {
+            newNairaBalance = row.naira_balance + paidNgn;
+          }
+        }
+
         db.prepare(`
           INSERT INTO user_balances (wallet_address, naira_balance, updated_at)
           VALUES (?, ?, ?)
           ON CONFLICT(wallet_address) DO UPDATE SET 
-            naira_balance = naira_balance + excluded.naira_balance,
+            naira_balance = excluded.naira_balance,
             updated_at = excluded.updated_at
-        `).run(walletAddress.toLowerCase(), paidNgn, Date.now());
+        `).run(walletAddress.toLowerCase(), newNairaBalance, Date.now());
 
-        const row = db.prepare('SELECT naira_balance FROM user_balances WHERE LOWER(wallet_address) = LOWER(?)').get(walletAddress.toLowerCase());
-        if (row) newNairaBalance = row.naira_balance;
+        await firebaseDb.setUserBalanceFirestore(walletAddress, newNairaBalance);
       } catch (balErr) {
         console.warn('Update naira balance notice:', balErr.message);
       }
 
-      // Record deposit in SQLite database
+      // Record deposit in SQLite and Firestore
       const txHash = '0xpaystack_' + Date.now();
       try {
         db.prepare(`
           INSERT OR IGNORE INTO deposits (reference, wallet_address, amount_ngn, status, tx_hash, created_at)
           VALUES (?, ?, ?, ?, ?, ?)
         `).run(reference, walletAddress, paidNgn, 'success', txHash, Date.now());
-        console.log(`💾 [SQLite DB] Recorded Paystack deposit ₦${paidNgn} for ${walletAddress}. New Naira Balance: ₦${newNairaBalance}`);
+
+        await firebaseDb.saveDepositFirestore({
+          reference,
+          walletAddress: walletAddress.toLowerCase(),
+          amountNgn: paidNgn,
+          status: 'success',
+          createdAt: Date.now()
+        });
+        console.log(`💾 Recorded Paystack deposit ₦${paidNgn} for ${walletAddress}. New Naira Balance: ₦${newNairaBalance}`);
       } catch (dbErr) {
-        console.warn('Deposit SQLite log notice:', dbErr.message);
+        console.warn('Deposit log notice:', dbErr.message);
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1030,8 +1187,14 @@ const server = http.createServer(async (req, res) => {
 
       if (fromCurrency === 'NGN' && toCurrency === 'cNGN') {
         // Converting Deposited Naira -> On-Chain cNGN
+        let availableNaira = 0;
         const row = db.prepare('SELECT naira_balance FROM user_balances WHERE LOWER(wallet_address) = LOWER(?)').get(walletAddress.toLowerCase());
-        const availableNaira = row ? (row.naira_balance || 0) : 0;
+        if (row && typeof row.naira_balance === 'number') availableNaira = row.naira_balance;
+
+        try {
+          const fBal = await firebaseDb.getUserBalanceFirestore(walletAddress);
+          if (typeof fBal === 'number') availableNaira = Math.max(availableNaira, fBal);
+        } catch (e) {}
 
         if (availableNaira < numAmount) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -1041,9 +1204,11 @@ const server = http.createServer(async (req, res) => {
           }));
         }
 
-        // Deduct from in-app Naira balance
-        db.prepare('UPDATE user_balances SET naira_balance = naira_balance - ?, updated_at = ? WHERE LOWER(wallet_address) = LOWER(?)')
-          .run(numAmount, Date.now(), walletAddress.toLowerCase());
+        // Deduct from in-app Naira balance across SQLite & Firestore
+        const remainingNaira = Math.max(0, availableNaira - numAmount);
+        db.prepare('UPDATE user_balances SET naira_balance = ?, updated_at = ? WHERE LOWER(wallet_address) = LOWER(?)')
+          .run(remainingNaira, Date.now(), walletAddress.toLowerCase());
+        await firebaseDb.setUserBalanceFirestore(walletAddress, remainingNaira).catch(() => {});
 
         // Dispatch cNGN on Base Sepolia
         let txHash = '0xconv_' + Date.now();
@@ -1071,9 +1236,6 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
-        const updatedRow = db.prepare('SELECT naira_balance FROM user_balances WHERE LOWER(wallet_address) = LOWER(?)').get(walletAddress.toLowerCase());
-        const remainingNaira = updatedRow ? updatedRow.naira_balance : 0;
-
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({
           success: true,
@@ -1087,16 +1249,20 @@ const server = http.createServer(async (req, res) => {
 
       } else {
         // Converting cNGN back to Naira balance (Sell cNGN)
+        let currentNaira = numAmount;
+        try {
+          const fBal = await firebaseDb.getUserBalanceFirestore(walletAddress);
+          if (typeof fBal === 'number') currentNaira = fBal + numAmount;
+        } catch (e) {}
+
         db.prepare(`
           INSERT INTO user_balances (wallet_address, naira_balance, updated_at)
           VALUES (?, ?, ?)
           ON CONFLICT(wallet_address) DO UPDATE SET 
-            naira_balance = naira_balance + excluded.naira_balance,
+            naira_balance = excluded.naira_balance,
             updated_at = excluded.updated_at
-        `).run(walletAddress.toLowerCase(), numAmount, Date.now());
-
-        const updatedRow = db.prepare('SELECT naira_balance FROM user_balances WHERE LOWER(wallet_address) = LOWER(?)').get(walletAddress.toLowerCase());
-        const currentNaira = updatedRow ? updatedRow.naira_balance : numAmount;
+        `).run(walletAddress.toLowerCase(), currentNaira, Date.now());
+        await firebaseDb.setUserBalanceFirestore(walletAddress, currentNaira).catch(() => {});
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({

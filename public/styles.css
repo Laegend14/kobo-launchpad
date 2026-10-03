@@ -142,6 +142,8 @@ body {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-overlay.active {
@@ -159,6 +161,8 @@ body {
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
   max-height: 90vh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* Scrollbars */
@@ -850,20 +854,26 @@ button, a, input, select, textarea {
     gap: 14px !important;
   }
 
-  /* Modals: bottom-sheet appearance on mobile */
+  /* Modals: bottom-sheet appearance on mobile with smooth scrolling */
   .modal-overlay {
     padding: 0 !important;
     align-items: flex-end !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 
   .modal-content {
     width: 100% !important;
     max-width: 100% !important;
     max-height: 90vh !important;
+    max-height: 92dvh !important;
     border-radius: 22px 22px 0 0 !important;
-    padding: 20px 16px !important;
+    padding: 20px 16px calc(24px + env(safe-area-inset-bottom, 16px)) !important;
     margin: 0 !important;
     border-bottom: none !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
   }
 
   /* Trade terminal grid */
