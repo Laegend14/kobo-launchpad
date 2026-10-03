@@ -1895,6 +1895,10 @@ function switchAccountTab(tabKey) {
   } else if (tabKey === 'tab-withdraw') {
     const maxSpan = document.getElementById('hubMaxWithdrawCngn');
     if (maxSpan) maxSpan.innerText = '₦' + Math.floor(userCngnBalance).toLocaleString();
+  } else if (tabKey === 'tab-gas') {
+    if (userWalletAddress && typeof checkStarterGasStatus === 'function') {
+      checkStarterGasStatus(userWalletAddress);
+    }
   }
 }
 
@@ -3736,21 +3740,278 @@ function syncDynamicState() {
 }
 
 
-// Check gas alert on sign up / login
-function checkGasAlertOnLogin(address, balEth) {
-  const banner = document.getElementById('gasWarningBanner');
-  if (balEth < 0.0005) {
-    if (banner) banner.style.display = 'block';
-    const notifiedKey = 'kobo_gas_notified_' + address;
-    if (!sessionStorage.getItem(notifiedKey)) {
-      sessionStorage.setItem(notifiedKey, 'true');
-      setTimeout(() => {
-        if (window.openAccountHub) window.openAccountHub('tab-gas');
-      }, 700);
+// ==========================================
+// STARTER GAS SYSTEM (1¢ in ETH Once Per Account)
+// ==========================================
+let hasClaimedStarterGas = false;
+
+async function checkStarterGasStatus(address) {
+  if (!address || !address.startsWith('0x')) return { hasClaimed: false };
+  try {
+    const res = await fetch(`/api/gas/starter-status?address=${encodeURIComponent(address)}`);
+    const data = await res.json();
+    if (data && data.success) {
+      hasClaimedStarterGas = Boolean(data.hasClaimed);
+      updateStarterGasUI(hasClaimedStarterGas, data.claim);
+      return data;
+    }
+  } catch (err) {
+    console.warn('Starter gas status check notice:', err);
+  }
+  return { hasClaimed: false };
+}
+
+function updateStarterGasUI(claimed, claimData) {
+  // 1. Account Hub Card
+  const hubClaimBtn = document.getElementById('btnHubClaimStarterGas');
+  const hubStatusText = document.getElementById('hubStarterGasStatusText');
+  
+  if (claimed) {
+    if (hubClaimBtn) {
+      hubClaimBtn.disabled = true;
+      hubClaimBtn.innerText = '✅ 1¢ Gas Claimed';
+      hubClaimBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+      hubClaimBtn.style.color = '#94A3B8';
+      hubClaimBtn.style.boxShadow = 'none';
+      hubClaimBtn.style.cursor = 'default';
+    }
+    if (hubStatusText) {
+      const txSnippet = claimData?.txHash ? ` (<a href="https://sepolia.basescan.org/tx/${claimData.txHash}" target="_blank" style="color: var(--kobo-green); text-decoration: underline;">View Tx ↗</a>)` : '';
+      hubStatusText.innerHTML = `✅ You have already claimed your 1¢ welcome gas${txSnippet}.`;
+      hubStatusText.style.color = '#86EFAC';
     }
   } else {
-    if (banner) banner.style.display = 'none';
+    if (hubClaimBtn) {
+      hubClaimBtn.disabled = false;
+      hubClaimBtn.innerText = '⚡ Claim 1¢ Free Gas';
+      hubClaimBtn.style.background = '';
+      hubClaimBtn.style.color = '';
+      hubClaimBtn.style.boxShadow = '';
+      hubClaimBtn.style.cursor = 'pointer';
+    }
+    if (hubStatusText) {
+      hubStatusText.innerText = 'Available for any wallet without sufficient gas.';
+      hubStatusText.style.color = '#94A3B8';
+    }
   }
+
+  // 2. Banner button & description
+  const bannerClaimBtn = document.getElementById('btnBannerClaimStarterGas');
+  const bannerTitle = document.getElementById('gasBannerTitle');
+  const bannerDesc = document.getElementById('gasBannerDesc');
+  if (claimed) {
+    if (bannerClaimBtn) bannerClaimBtn.style.display = 'none';
+    if (bannerTitle) bannerTitle.innerText = 'Low Base Sepolia ETH for Gas';
+    if (bannerDesc) bannerDesc.innerHTML = 'You have already claimed your 1¢ starter gas. If you need more testnet ETH for heavy trading, claim from the free developer faucets below!';
+  } else {
+    if (bannerClaimBtn) bannerClaimBtn.style.display = 'inline-flex';
+    if (bannerTitle) bannerTitle.innerText = 'Claim 1¢ Free ETH for Gas Fees';
+    if (bannerDesc) bannerDesc.innerHTML = 'Trading is conducted in <b>cNGN</b> (1:1 with Naira). Base Sepolia requires a fraction of a cent in ETH for gas. Claim <b>1¢ in Free ETH (0.000005 ETH)</b> sponsored by KOBO to get started!';
+  }
+}
+
+// Open / Close Starter Gas Welcome Prompt Modal
+window.openStarterGasPrompt = function() {
+  if (hasClaimedStarterGas) return;
+  const modal = document.getElementById('modalStarterGasPrompt');
+  if (modal) {
+    modal.style.display = 'flex';
+  }
+};
+
+window.closeStarterGasPrompt = function(dismissSession = true) {
+  const modal = document.getElementById('modalStarterGasPrompt');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+  if (dismissSession && userWalletAddress) {
+    sessionStorage.setItem('kobo_dismissed_starter_gas_' + userWalletAddress.toLowerCase(), 'true');
+  }
+};
+
+// Dispatch Starter Gas Claim from Deployer
+async function claimStarterGas(source = 'modal') {
+  if (!userWalletAddress) {
+    if (window.openDynamicModal) window.openDynamicModal();
+    return;
+  }
+
+  const modalBtn = document.getElementById('btnClaimStarterGasModal');
+  const hubBtn = document.getElementById('btnHubClaimStarterGas');
+  const bannerBtn = document.getElementById('btnBannerClaimStarterGas');
+  const statusMsg = document.getElementById('starterGasModalStatusMsg');
+
+  // Set loading state on all triggers
+  [modalBtn, hubBtn, bannerBtn].forEach(b => {
+    if (b) {
+      b.disabled = true;
+      b.dataset.prevText = b.innerText;
+      b.innerText = '⏳ Dispensing 1¢ ETH on-chain...';
+    }
+  });
+
+  if (statusMsg) {
+    statusMsg.style.display = 'block';
+    statusMsg.style.background = 'rgba(59, 130, 246, 0.15)';
+    statusMsg.style.color = '#93C5FD';
+    statusMsg.style.border = '1px solid rgba(147, 197, 253, 0.3)';
+    statusMsg.innerText = 'Broadcasting transaction from KOBO deployer to your wallet...';
+  }
+
+  try {
+    const res = await fetch('/api/gas/claim-starter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress: userWalletAddress })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      hasClaimedStarterGas = true;
+      if (typeof confetti === 'function') {
+        confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+      }
+
+      if (statusMsg) {
+        statusMsg.style.background = 'rgba(0, 255, 135, 0.15)';
+        statusMsg.style.color = '#86EFAC';
+        statusMsg.style.border = '1px solid rgba(0, 255, 135, 0.3)';
+        statusMsg.innerHTML = `✅ 1¢ ETH delivered on-chain! <a href="https://sepolia.basescan.org/tx/${data.txHash}" target="_blank" style="color: #FFF; text-decoration: underline;">View on Basescan ↗</a>`;
+      }
+
+      // Refresh ETH balance
+      try {
+        const balRes = await fetch(`/api/eth-balance?address=${userWalletAddress}`).then(r => r.json());
+        if (balRes.success && typeof balRes.balanceEth === 'number') {
+          userEthBalance = balRes.balanceEth;
+        } else {
+          userEthBalance += 0.000005;
+        }
+        updateBalancesInUI();
+      } catch (e) {
+        userEthBalance += 0.000005;
+        updateBalancesInUI();
+      }
+
+      updateStarterGasUI(true, { txHash: data.txHash });
+      showLoginToast('Gas Station', `1¢ in ETH delivered to your wallet!`);
+
+      // Hide gas warning banner now that they have gas
+      const banner = document.getElementById('gasWarningBanner');
+      if (banner && userEthBalance >= 0.000004) {
+        banner.style.display = 'none';
+      }
+
+      setTimeout(() => {
+        window.closeStarterGasPrompt(false);
+        if (statusMsg) statusMsg.style.display = 'none';
+      }, 2400);
+
+    } else {
+      const errMsg = data.message || 'Gas claim failed. Please try again.';
+      if (statusMsg) {
+        statusMsg.style.display = 'block';
+        statusMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+        statusMsg.style.color = '#FCA5A5';
+        statusMsg.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+        statusMsg.innerText = errMsg;
+      }
+      if (data.hasClaimed) {
+        hasClaimedStarterGas = true;
+        updateStarterGasUI(true, data.claim);
+      }
+      [modalBtn, hubBtn, bannerBtn].forEach(b => {
+        if (b) {
+          b.disabled = Boolean(data.hasClaimed);
+          b.innerText = data.hasClaimed ? '✅ Already Claimed' : (b.dataset.prevText || '⚡ Claim 1¢ Free Gas');
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Claim starter gas error:', err);
+    if (statusMsg) {
+      statusMsg.style.display = 'block';
+      statusMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+      statusMsg.style.color = '#FCA5A5';
+      statusMsg.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      statusMsg.innerText = 'Network error while claiming gas. Please try again.';
+    }
+    [modalBtn, hubBtn, bannerBtn].forEach(b => {
+      if (b) {
+        b.disabled = false;
+        b.innerText = b.dataset.prevText || '⚡ Claim 1¢ Free Gas';
+      }
+    });
+  }
+}
+
+// Check gas alert and prompt new users for 1¢ starter gas
+async function checkGasAlertOnLogin(address, balEth) {
+  if (!address || !address.startsWith('0x')) return;
+
+  const banner = document.getElementById('gasWarningBanner');
+
+  // If user has virtually no gas (< 0.00005 ETH)
+  if (balEth < 0.00005) {
+    if (banner) banner.style.display = 'block';
+
+    // Check on-chain / database claim status
+    const statusData = await checkStarterGasStatus(address);
+
+    if (!statusData.hasClaimed) {
+      // Optional Prompt: Check if not dismissed in this session
+      const dismissedKey = 'kobo_dismissed_starter_gas_' + address.toLowerCase();
+      const promptedKey = 'kobo_prompted_starter_gas_' + address.toLowerCase();
+
+      if (!sessionStorage.getItem(dismissedKey) && !sessionStorage.getItem(promptedKey)) {
+        sessionStorage.setItem(promptedKey, 'true');
+        setTimeout(() => {
+          window.openStarterGasPrompt();
+        }, 800);
+      }
+    }
+  } else {
+    // User already has gas
+    if (banner) banner.style.display = 'none';
+    checkStarterGasStatus(address);
+  }
+}
+
+// Modal Starter Gas Prompt Listeners
+const btnClaimStarterGasModal = document.getElementById('btnClaimStarterGasModal');
+if (btnClaimStarterGasModal) {
+  btnClaimStarterGasModal.addEventListener('click', () => claimStarterGas('modal'));
+}
+
+const btnDismissStarterGasModal = document.getElementById('btnDismissStarterGasModal');
+if (btnDismissStarterGasModal) {
+  btnDismissStarterGasModal.addEventListener('click', () => window.closeStarterGasPrompt(true));
+}
+
+const btnDismissStarterGasModalCross = document.getElementById('btnDismissStarterGasModalCross');
+if (btnDismissStarterGasModalCross) {
+  btnDismissStarterGasModalCross.addEventListener('click', () => window.closeStarterGasPrompt(true));
+}
+
+const modalStarterGas = document.getElementById('modalStarterGasPrompt');
+if (modalStarterGas) {
+  modalStarterGas.addEventListener('click', (e) => {
+    if (e.target === modalStarterGas) {
+      window.closeStarterGasPrompt(true);
+    }
+  });
+}
+
+// Account Hub Starter Gas Button Listener
+const btnHubClaimStarterGas = document.getElementById('btnHubClaimStarterGas');
+if (btnHubClaimStarterGas) {
+  btnHubClaimStarterGas.addEventListener('click', () => claimStarterGas('hub'));
+}
+
+// Banner Starter Gas Button Listener
+const btnBannerClaimStarterGas = document.getElementById('btnBannerClaimStarterGas');
+if (btnBannerClaimStarterGas) {
+  btnBannerClaimStarterGas.addEventListener('click', () => claimStarterGas('banner'));
 }
 
 // Banner Open Gas handler -> opens Account Hub Gas tab

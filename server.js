@@ -223,6 +223,14 @@ db.exec(`
     naira_balance REAL DEFAULT 0,
     updated_at INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS starter_gas_claims (
+    wallet_address TEXT PRIMARY KEY,
+    amount_eth TEXT,
+    amount_usd TEXT,
+    tx_hash TEXT,
+    claimed_at INTEGER
+  );
 `);
 
 // Seed user_balances from deposits if not yet populated
@@ -1081,6 +1089,160 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ success: true, address, balanceEth: 0 }));
+    }
+  }
+
+  // --- API: Starter Gas Claim Status (1¢ in ETH, Once Per Account) ---
+  if (pathname === '/api/gas/starter-status' && req.method === 'GET') {
+    const rawAddress = url.searchParams.get('address') || '';
+    if (!rawAddress || !rawAddress.startsWith('0x')) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, message: 'Invalid address' }));
+    }
+    const address = rawAddress.toLowerCase();
+    try {
+      let claim = null;
+      const row = db.prepare('SELECT * FROM starter_gas_claims WHERE LOWER(wallet_address) = LOWER(?)').get(address);
+      if (row) {
+        claim = {
+          walletAddress: row.wallet_address,
+          amountEth: row.amount_eth || '0.000005',
+          amountUsd: row.amount_usd || '0.01',
+          txHash: row.tx_hash,
+          claimedAt: row.claimed_at
+        };
+      } else {
+        // Query Firestore cloud persistence
+        try {
+          const fClaim = await firebaseDb.getGasClaimFirestore(address);
+          if (fClaim) {
+            claim = fClaim;
+            db.prepare(`
+              INSERT OR IGNORE INTO starter_gas_claims (wallet_address, amount_eth, amount_usd, tx_hash, claimed_at)
+              VALUES (?, ?, ?, ?, ?)
+            `).run(address, fClaim.amountEth || '0.000005', fClaim.amountUsd || '0.01', fClaim.txHash || '', fClaim.claimedAt || Date.now());
+          }
+        } catch (fErr) {}
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: true,
+        address,
+        hasClaimed: Boolean(claim),
+        claim: claim || null,
+        amountEth: '0.000005',
+        amountUsd: '0.01'
+      }));
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, address, hasClaimed: false, amountEth: '0.000005', amountUsd: '0.01' }));
+    }
+  }
+
+  // --- API: Claim 1¢ Starter Gas in ETH (Sent from Deployer Private Key) ---
+  if (pathname === '/api/gas/claim-starter' && req.method === 'POST') {
+    try {
+      const data = await parseJson(req);
+      const rawAddress = data.walletAddress || data.address;
+      if (!rawAddress || !rawAddress.startsWith('0x')) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, message: 'Valid recipient wallet address is required' }));
+      }
+      const walletAddress = rawAddress.toLowerCase();
+
+      // Check SQLite
+      const existingRow = db.prepare('SELECT * FROM starter_gas_claims WHERE LOWER(wallet_address) = LOWER(?)').get(walletAddress);
+      if (existingRow) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: false,
+          hasClaimed: true,
+          message: 'Starter gas has already been claimed for this wallet address. Only 1 claim is allowed per account.',
+          claim: {
+            txHash: existingRow.tx_hash,
+            claimedAt: existingRow.claimed_at,
+            amountEth: existingRow.amount_eth
+          }
+        }));
+      }
+
+      // Check Firestore
+      try {
+        const firestoreClaim = await firebaseDb.getGasClaimFirestore(walletAddress);
+        if (firestoreClaim) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            hasClaimed: true,
+            message: 'Starter gas has already been claimed for this wallet address. Only 1 claim is allowed per account.',
+            claim: firestoreClaim
+          }));
+        }
+      } catch (fErr) {}
+
+      if (!DEPLOYER_PRIVATE_KEY) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: false,
+          message: 'Deployer gas key is not configured on the server. Please contact support.'
+        }));
+      }
+
+      // 1 cent in ETH (~0.000005 ETH)
+      const provider = getProvider();
+      const relayerWallet = new ethers.Wallet(DEPLOYER_PRIVATE_KEY, provider);
+      const amountEth = '0.000005';
+      const amountWei = ethers.parseEther(amountEth);
+
+      const feeData = await provider.getFeeData();
+      console.log(`⛽ [Starter Gas Claim] Dispensing 1¢ (${amountEth} ETH) to ${rawAddress} from deployer ${relayerWallet.address}...`);
+
+      const tx = await relayerWallet.sendTransaction({
+        to: rawAddress,
+        value: amountWei,
+        gasLimit: 30000,
+        maxFeePerGas: feeData.maxFeePerGas || ethers.parseUnits('0.02', 'gwei'),
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas || ethers.parseUnits('0.002', 'gwei')
+      });
+
+      console.log(`🚀 [Starter Gas Claim] Tx broadcast: ${tx.hash}, waiting confirmation...`);
+      await tx.wait();
+      const txHash = tx.hash;
+
+      const claimRecord = {
+        amountEth,
+        amountUsd: '0.01',
+        txHash,
+        claimedAt: Date.now()
+      };
+
+      // Record in SQLite
+      db.prepare(`
+        INSERT OR REPLACE INTO starter_gas_claims (wallet_address, amount_eth, amount_usd, tx_hash, claimed_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(walletAddress, amountEth, '0.01', txHash, claimRecord.claimedAt);
+
+      // Record in Firestore
+      await firebaseDb.saveGasClaimFirestore(walletAddress, claimRecord).catch(e => {
+        console.warn('Firestore starter gas claim save notice:', e.message);
+      });
+
+      console.log(`✅ [Starter Gas Claim] Dispensed 1¢ ETH to ${rawAddress}. Tx: ${txHash}`);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: true,
+        recipient: rawAddress,
+        amountEth,
+        amountUsd: '0.01',
+        txHash,
+        message: 'Successfully sent 1¢ in Base Sepolia ETH (0.000005 ETH) to your wallet for gas!'
+      }));
+    } catch (e) {
+      console.error('Starter gas claim error:', e);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, message: e.message || 'Gas claim failed on-chain' }));
     }
   }
 
