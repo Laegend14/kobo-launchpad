@@ -2885,6 +2885,60 @@ function showIpfsState(state) {
   if (ipfsPreviewState) ipfsPreviewState.style.display = state === 'preview' ? 'block' : 'none';
 }
 
+// Client-Side Image Optimizer (Scales to 512x512 max, compresses to clean WebP/JPEG, fits safely in Firestore & Vercel)
+function optimizeImageForAvatar(file) {
+  return new Promise((resolve) => {
+    if (!file) return resolve(null);
+    // Keep raw vector SVG or animated GIF
+    if (file.type === 'image/svg+xml' || file.type === 'image/gif') {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxDim = 512;
+      let width = img.width;
+      let height = img.height;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      try {
+        const dataUrl = canvas.toDataURL('image/webp', 0.9);
+        if (dataUrl && dataUrl.startsWith('data:image/webp')) {
+          return resolve(dataUrl);
+        }
+      } catch (e) {}
+      resolve(canvas.toDataURL('image/jpeg', 0.9));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    };
+    img.src = url;
+  });
+}
+
 async function handleIpfsFileUpload(file) {
   if (!file) return;
 
@@ -2894,59 +2948,54 @@ async function handleIpfsFileUpload(file) {
     return;
   }
 
-  if (file.size > 10 * 1024 * 1024) {
-    alert('Image file size exceeds 10MB limit.');
-    return;
-  }
-
   showIpfsState('loading');
 
   try {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const fileData = e.target.result;
-      try {
-        const res = await fetch('/api/ipfs/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileData: fileData,
-            fileName: file.name
-          })
-        });
+    const fileData = await optimizeImageForAvatar(file);
+    if (!fileData) throw new Error('Could not process image file');
 
-        const data = await res.json();
-        if (data.success && data.cid) {
-          const ipfsUri = data.ipfsUri || `ipfs://${data.cid}`;
-          if (newCoinImageUrl) newCoinImageUrl.value = ipfsUri;
+    const res = await fetch('/api/ipfs/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileData: fileData,
+        fileName: file.name
+      })
+    });
 
-          if (ipfsThumbnail) ipfsThumbnail.src = data.gatewayUrl || `/ipfs/${data.cid}`;
-          if (ipfsFileName) ipfsFileName.innerText = file.name;
-          if (ipfsCidShort) ipfsCidShort.innerText = shortenAddress(data.cid);
-          if (ipfsFileSize) ipfsFileSize.innerText = `${(file.size / 1024).toFixed(1)} KB • Content-Addressed`;
+    const data = await res.json();
+    if (data.success && data.cid) {
+      const ipfsUri = data.ipfsUri || `ipfs://${data.cid}`;
+      if (newCoinImageUrl) newCoinImageUrl.value = ipfsUri;
 
-          // Clear preset active states
-          document.querySelectorAll('.preset-img').forEach(b => {
-            b.style.background = 'var(--bg-elevated)';
-            b.style.borderColor = 'var(--border-subtle)';
-            b.classList.remove('active');
-          });
-
-          showIpfsState('preview');
-          console.log('✅ Image uploaded to IPFS:', ipfsUri);
-        } else {
-          alert(data.message || 'IPFS upload failed.');
-          showIpfsState('idle');
-        }
-      } catch (uploadErr) {
-        console.error('IPFS upload network error:', uploadErr);
-        alert('Network error while uploading to IPFS: ' + uploadErr.message);
-        showIpfsState('idle');
+      if (ipfsThumbnail) {
+        ipfsThumbnail.src = data.gatewayUrl || `/ipfs/${data.cid}`;
+        ipfsThumbnail.onerror = () => {
+          ipfsThumbnail.onerror = null;
+          ipfsThumbnail.src = fileData;
+        };
       }
-    };
-    reader.readAsDataURL(file);
-  } catch (err) {
-    console.error('File reading error:', err);
+      if (ipfsFileName) ipfsFileName.innerText = file.name;
+      if (ipfsCidShort) ipfsCidShort.innerText = shortenAddress(data.cid);
+      const approxKb = Math.round((fileData.length * 3) / 4 / 1024);
+      if (ipfsFileSize) ipfsFileSize.innerText = `${approxKb > 0 ? approxKb : 1} KB • Content-Addressed`;
+
+      // Clear preset active states
+      document.querySelectorAll('.preset-img').forEach(b => {
+        b.style.background = 'var(--bg-elevated)';
+        b.style.borderColor = 'var(--border-subtle)';
+        b.classList.remove('active');
+      });
+
+      showIpfsState('preview');
+      console.log('✅ Image uploaded to IPFS:', ipfsUri);
+    } else {
+      alert(data.message || 'IPFS upload failed.');
+      showIpfsState('idle');
+    }
+  } catch (uploadErr) {
+    console.error('IPFS upload network error:', uploadErr);
+    alert('Network error while uploading to IPFS: ' + uploadErr.message);
     showIpfsState('idle');
   }
 }
