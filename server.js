@@ -838,13 +838,30 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/trade' && req.method === 'POST') {
     try {
       const data = await parseJson(req);
-      const { txHash, tokenAddress, isBuy, amountCngn, tokenAmount, traderAddress } = data;
+      const { txHash, tokenAddress, isBuy, amountCngn, tokenAmount, traderAddress, tokenSymbol: inputSymbol } = data;
 
-      let tokenSymbol = 'TOKEN';
-      if (tokenAddress) {
-        const tok = db.prepare('SELECT symbol FROM tokens WHERE LOWER(address) = LOWER(?)').get(tokenAddress);
-        if (tok) tokenSymbol = tok.symbol;
+      let tokenSymbol = inputSymbol;
+      if (!tokenSymbol || tokenSymbol === 'TOKEN') {
+        if (tokenAddress) {
+          const tok = db.prepare('SELECT symbol FROM tokens WHERE LOWER(address) = LOWER(?)').get(tokenAddress);
+          if (tok && tok.symbol) tokenSymbol = tok.symbol;
+          if (!tokenSymbol || tokenSymbol === 'TOKEN') {
+            try {
+              const fTok = await firebaseDb.getTokenFirestore(tokenAddress);
+              if (fTok && fTok.symbol) tokenSymbol = fTok.symbol;
+            } catch (e) {}
+          }
+          if (!tokenSymbol || tokenSymbol === 'TOKEN') {
+            try {
+              const provider = getProvider();
+              const c = new ethers.Contract(tokenAddress, ['function symbol() view returns (string)'], provider);
+              const s = await c.symbol();
+              if (s) tokenSymbol = s;
+            } catch (e) {}
+          }
+        }
       }
+      if (!tokenSymbol) tokenSymbol = 'TOKEN';
 
       const tradeId = 't-' + Date.now();
       db.prepare(`
@@ -1599,7 +1616,14 @@ const server = http.createServer(async (req, res) => {
       const cid = computeIpfsCid(buffer);
       const mime = detectImageMime(buffer) || detectedMime;
       const targetPath = path.join(IPFS_DIR, cid);
-      fs.writeFileSync(targetPath, buffer);
+      try { fs.writeFileSync(targetPath, buffer); } catch (e) {}
+
+      // Persist in Firestore cloud storage so any Vercel lambda instance can retrieve it
+      try {
+        await firebaseDb.saveIpfsFileFirestore(cid, buffer.toString('base64'), mime);
+      } catch (fErr) {
+        console.warn('Firestore IPFS save notice:', fErr.message);
+      }
 
       console.log(`🌐 [IPFS Upload] Pinned ${buffer.length} bytes to CID: ${cid} (${mime})`);
 
@@ -1626,7 +1650,8 @@ const server = http.createServer(async (req, res) => {
     const cid = pathname.replace('/ipfs/', '').split('/')[0].split('?')[0];
     const ipfsFilePath = path.join(IPFS_DIR, cid);
     const fallbackIpfsPath = path.join(__dirname, 'public', 'ipfs', cid);
-    const targetFile = fs.existsSync(ipfsFilePath) ? ipfsFilePath : (fs.existsSync(fallbackIpfsPath) ? fallbackIpfsPath : null);
+    let targetFile = fs.existsSync(ipfsFilePath) ? ipfsFilePath : (fs.existsSync(fallbackIpfsPath) ? fallbackIpfsPath : null);
+
     if (targetFile) {
       const buffer = fs.readFileSync(targetFile);
       const mime = detectImageMime(buffer);
@@ -1636,10 +1661,34 @@ const server = http.createServer(async (req, res) => {
         'Access-Control-Allow-Origin': '*'
       });
       return res.end(buffer);
-    } else {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'IPFS content not found', cid }));
     }
+
+    // If not on local disk (new serverless lambda), fetch from persistent Firestore storage
+    try {
+      const fDoc = await firebaseDb.getIpfsFileFirestore(cid);
+      if (fDoc && fDoc.data) {
+        const buffer = Buffer.from(fDoc.data, 'base64');
+        const mime = fDoc.mimeType || detectImageMime(buffer);
+        try { fs.writeFileSync(ipfsFilePath, buffer); } catch (e) {}
+        res.writeHead(200, {
+          'Content-Type': mime,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Access-Control-Allow-Origin': '*'
+        });
+        return res.end(buffer);
+      }
+    } catch (dbErr) {
+      console.warn('Firestore IPFS lookup notice:', dbErr.message);
+    }
+
+    // Fallback: Generate dynamic SVG avatar so image never breaks
+    const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><rect width="256" height="256" rx="48" fill="#0D111A"/><rect width="252" height="252" x="2" y="2" rx="46" fill="none" stroke="#00FF87" stroke-width="2" stroke-opacity="0.3"/><circle cx="128" cy="128" r="70" fill="#00FF87" fill-opacity="0.1"/><text x="128" y="148" font-family="sans-serif" font-size="64" font-weight="900" fill="#00FF87" text-anchor="middle">🪙</text></svg>`;
+    res.writeHead(200, {
+      'Content-Type': 'image/svg+xml',
+      'Cache-Control': 'public, max-age=86400',
+      'Access-Control-Allow-Origin': '*'
+    });
+    return res.end(fallbackSvg);
   }
 
   // --- Static Files ---

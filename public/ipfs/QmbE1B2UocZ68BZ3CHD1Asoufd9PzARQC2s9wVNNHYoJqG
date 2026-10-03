@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="sharcBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#050C1A"/>
+      <stop offset="100%" stop-color="#0B1A30"/>
+    </linearGradient>
+    <linearGradient id="aquaNeon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00FF87"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+    <linearGradient id="sharkBody" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="400" height="400" rx="64" fill="url(#sharcBg)"/>
+  <rect width="396" height="396" x="2" y="2" rx="62" fill="none" stroke="#00FF87" stroke-width="2" stroke-opacity="0.35"/>
+
+  <!-- Glowing Water Ring Aura -->
+  <circle cx="200" cy="190" r="130" fill="none" stroke="url(#aquaNeon)" stroke-width="2" stroke-dasharray="12 8" opacity="0.6"/>
+  <circle cx="200" cy="190" r="100" fill="#00FF87" fill-opacity="0.06" filter="url(#neonGlow)"/>
+
+  <!-- Apex Shark Silhouette & Fin -->
+  <g transform="translate(60, 50)">
+    <!-- Dorsal Fin Apex -->
+    <path d="M 140,40 Q 155,95 210,120 L 140,120 Z" fill="url(#aquaNeon)" filter="url(#neonGlow)"/>
+    
+    <!-- Shark Head & Body Contour -->
+    <path d="M 20,165 Q 90,110 200,115 Q 260,120 270,165 Q 240,215 170,225 Q 90,230 20,165 Z" fill="url(#sharkBody)" stroke="url(#aquaNeon)" stroke-width="4"/>
+
+    <!-- Sharp Shark Gills -->
+    <path d="M 175,150 Q 170,165 172,185" stroke="#00FF87" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 185,150 Q 180,165 182,185" stroke="#00FF87" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 195,150 Q 190,165 192,185" stroke="#00FF87" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Piercing Glowing Eye -->
+    <polygon points="75,155 88,150 92,157 78,162" fill="#00FF87" filter="url(#neonGlow)"/>
+    <circle cx="83" cy="155" r="3" fill="#FFFFFF"/>
+
+    <!-- Sharp Predator Teeth / Jaw Line -->
+    <path d="M 30,172 L 40,178 L 50,172 L 60,178 L 70,172 L 80,178 L 90,172" stroke="#FFFFFF" stroke-width="3" fill="none"/>
+  </g>
+
+  <!-- Bottom Token Symbol Banner -->
+  <text x="200" y="355" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="28" fill="#00FF87" text-anchor="middle" letter-spacing="4" filter="url(#neonGlow)">$SHARC</text>
+</svg>

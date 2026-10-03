@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0A0E17"/>
+      <stop offset="100%" stop-color="#161B26"/>
+    </linearGradient>
+    <linearGradient id="danfoYellow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFE600"/>
+      <stop offset="100%" stop-color="#EAB308"/>
+    </linearGradient>
+    <linearGradient id="glassShine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#0284C7" stop-opacity="0.9"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="400" height="400" rx="64" fill="url(#bg)"/>
+  <rect width="396" height="396" x="2" y="2" rx="62" fill="none" stroke="#FFE600" stroke-width="2" stroke-opacity="0.3"/>
+
+  <!-- Glowing Aura -->
+  <circle cx="200" cy="200" r="140" fill="#FFE600" fill-opacity="0.08" filter="url(#glow)"/>
+
+  <!-- Danfo Bus Body -->
+  <g transform="translate(45, 65)">
+    <!-- Roof / Top Curve -->
+    <path d="M 40,70 Q 155,50 270,70 L 285,210 Q 285,225 270,225 L 40,225 Q 25,225 25,210 Z" fill="url(#danfoYellow)"/>
+
+    <!-- Dual Signature Black Lagos Stripes -->
+    <rect x="25" y="145" width="260" height="15" fill="#111827"/>
+    <rect x="25" y="170" width="260" height="15" fill="#111827"/>
+
+    <!-- Windshield -->
+    <path d="M 50,80 L 260,80 L 250,132 L 60,132 Z" fill="url(#glassShine)" rx="8"/>
+    <!-- Windshield center divider -->
+    <line x1="155" y1="80" x2="155" y2="132" stroke="#1E293B" stroke-width="4"/>
+    <!-- Windshield Glare Reflection -->
+    <polygon points="75,85 115,85 85,128 65,128" fill="#FFFFFF" fill-opacity="0.45"/>
+
+    <!-- Headlights -->
+    <circle cx="58" cy="195" r="16" fill="#FEF08A" stroke="#CA8A04" stroke-width="3" filter="url(#glow)"/>
+    <circle cx="58" cy="195" r="8" fill="#FFFFFF"/>
+    <circle cx="252" cy="195" r="16" fill="#FEF08A" stroke="#CA8A04" stroke-width="3" filter="url(#glow)"/>
+    <circle cx="252" cy="195" r="8" fill="#FFFFFF"/>
+
+    <!-- Front Grille -->
+    <rect x="95" y="188" width="120" height="16" rx="6" fill="#1E293B"/>
+    <line x1="110" y1="196" x2="200" y2="196" stroke="#475569" stroke-width="3" stroke-dasharray="8 6"/>
+
+    <!-- Bumper -->
+    <rect x="18" y="222" width="274" height="20" rx="8" fill="#0F172A" stroke="#334155" stroke-width="2"/>
+
+    <!-- License Plate: LAGOS DANFO -->
+    <rect x="110" y="224" width="90" height="16" rx="3" fill="#FFFFFF"/>
+    <text x="155" y="236" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="9" fill="#000000" text-anchor="middle" letter-spacing="1">LAGOS • DANFO</text>
+
+    <!-- Wheels -->
+    <rect x="45" y="238" width="40" height="18" rx="6" fill="#0F172A"/>
+    <rect x="225" y="238" width="40" height="18" rx="6" fill="#0F172A"/>
+  </g>
+
+  <!-- Bottom Brand Text -->
+  <text x="200" y="355" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="28" fill="#FFE600" text-anchor="middle" letter-spacing="3" filter="url(#glow)">$DANFO</text>
+</svg>

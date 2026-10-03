@@ -66,6 +66,35 @@ function shortenAddress(addr) {
   return addr.substring(0, 6) + '...' + addr.substring(addr.length - 4);
 }
 
+// Dynamic High-Quality Coin Avatar Fallback (Guarantees crisp avatars even if IPFS is slow or unpinned)
+function generateCoinAvatar(symbol = 'COIN', name = '', cultureTag = 'Meme') {
+  let emoji = '🪙';
+  const symUpper = (symbol || '').toUpperCase();
+  const nameLower = (name || '').toLowerCase();
+  if (symUpper.includes('SHARC') || nameLower.includes('sharc')) emoji = '🦈';
+  else if (symUpper.includes('DANFO') || nameLower.includes('danfo')) emoji = '🚌';
+  else if (cultureTag === 'Community') emoji = '🤝';
+  else if (cultureTag === 'Gaming') emoji = '🎮';
+  else if (cultureTag === 'DeFi') emoji = '⚡';
+  else if (cultureTag === 'Meme') emoji = '🔥';
+
+  const cleanSym = (symbol || 'COIN').replace('$', '').slice(0, 5).toUpperCase();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+    <defs>
+      <linearGradient id="g_${cleanSym}" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#0F172A"/>
+        <stop offset="100%" stop-color="#020617"/>
+      </linearGradient>
+    </defs>
+    <rect width="256" height="256" rx="52" fill="url(#g_${cleanSym})"/>
+    <rect width="252" height="252" x="2" y="2" rx="50" fill="none" stroke="#00FF87" stroke-width="2" stroke-opacity="0.35"/>
+    <circle cx="128" cy="115" r="54" fill="#00FF87" fill-opacity="0.12"/>
+    <text x="128" y="134" font-size="52" text-anchor="middle">${emoji}</text>
+    <text x="128" y="210" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="28" fill="#FFE600" text-anchor="middle" letter-spacing="2">$${cleanSym}</text>
+  </svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
 // IPFS URL Resolver (Resolves ipfs://Qm... to /ipfs/Qm...)
 function resolveIpfsUrl(uri) {
   if (!uri) return 'https://images.unsplash.com/photo-1534188753412-3e26d0d618d6?w=400&auto=format&fit=crop&q=80';
@@ -99,13 +128,18 @@ async function initApp() {
   }
 }
 
-// Render Featured Spotlight Banner
+// Render Featured Spotlight Banner (Memoized to prevent reload flicker)
+let lastRenderedOdogwuSig = '';
 function renderOdogwu() {
   const container = document.getElementById('odogwuSection');
   if (!container || allTokens.length === 0) return;
 
   const topToken = [...allTokens].sort((a, b) => b.marketCapNaira - a.marketCapNaira)[0];
   if (!topToken) return;
+
+  const sig = `${topToken.address}_${topToken.marketCapNaira}_${topToken.priceKobo}_${topToken.progressPercent}_${topToken.imageUri}`;
+  if (sig === lastRenderedOdogwuSig) return;
+  lastRenderedOdogwuSig = sig;
 
   container.innerHTML = `
     <div class="card-glass featured-glow" style="position: relative; overflow: hidden; padding: 28px; background: linear-gradient(135deg, rgba(16, 21, 32, 0.95), rgba(22, 28, 43, 0.9));">
@@ -119,7 +153,10 @@ function renderOdogwu() {
               <span style="font-size: 11px;">⭐</span>
               <span style="font-size: 9px; font-weight: 900; color: #06080C; letter-spacing: 0.5px;">FEATURED</span>
             </div>
-            <img src="${resolveIpfsUrl(topToken.imageUri)}" alt="${topToken.name}" style="width: 90px; height: 90px; border-radius: 20px; object-fit: cover; border: 2px solid rgba(0, 255, 135, 0.5); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);">
+            <img src="${resolveIpfsUrl(topToken.imageUri)}" 
+                 alt="${topToken.name}" 
+                 onerror="this.onerror=null; this.src=generateCoinAvatar('${topToken.symbol}', '${topToken.name}', '${topToken.cultureTag}');"
+                 style="width: 90px; height: 90px; border-radius: 20px; object-fit: cover; border: 2px solid rgba(0, 255, 135, 0.5); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); background: #0A0F1D;">
           </div>
 
           <div>
@@ -172,7 +209,8 @@ function renderOdogwu() {
   `;
 }
 
-// Render Tokens Grid with Category and Search Filter
+// Render Tokens Grid with Category and Search Filter (Memoized to eliminate re-mount image flickering)
+let lastRenderedTokensSig = '';
 function renderTokens() {
   const container = document.getElementById('tokensGrid');
   if (!container) return;
@@ -196,6 +234,7 @@ function renderTokens() {
   }
 
   if (filtered.length === 0) {
+    lastRenderedTokensSig = 'empty_' + currentCulture + '_' + currentSearch;
     container.innerHTML = `
       <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; background: var(--bg-card); border-radius: 20px; border: 1px dashed var(--border-subtle);">
         <p style="font-size: 18px; font-weight: 700; color: var(--text-secondary);">No tokens found</p>
@@ -205,6 +244,13 @@ function renderTokens() {
     `;
     return;
   }
+
+  // Signature check: if tokens data is identical, do not wipe DOM. Prevents image flickering completely!
+  const currentSig = filtered.map(t => `${t.address}_${t.priceKobo}_${t.marketCapNaira}_${t.totalTrades}_${t.progressPercent}_${t.imageUri}`).join('|') + `_${currentCulture}_${currentSearch}`;
+  if (currentSig === lastRenderedTokensSig) {
+    return;
+  }
+  lastRenderedTokensSig = currentSig;
 
   container.innerHTML = filtered.map(t => {
     let tagBg = 'rgba(0, 255, 135, 0.12)';
@@ -227,7 +273,11 @@ function renderTokens() {
           </div>
 
           <div style="display: flex; gap: 14px; align-items: center;">
-            <img src="${resolveIpfsUrl(t.imageUri)}" alt="${t.name}" style="width: 58px; height: 58px; border-radius: 16px; object-fit: cover; border: 1px solid var(--border-subtle); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);">
+            <img src="${resolveIpfsUrl(t.imageUri)}" 
+                 alt="${t.name}" 
+                 onerror="this.onerror=null; this.src=generateCoinAvatar('${t.symbol}', '${t.name}', '${t.cultureTag}');" 
+                 loading="lazy" 
+                 style="width: 58px; height: 58px; border-radius: 16px; object-fit: cover; border: 1px solid var(--border-subtle); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); background: #0A0F1D;">
             <div style="flex: 1; min-width: 0;">
               <h3 style="font-size: 17px; font-weight: 700; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.name}</h3>
               <span style="font-size: 13px; font-weight: 600; color: var(--cowrie-gold-light);">$${t.symbol}</span>
@@ -348,20 +398,28 @@ let lastRenderedTradesSig = '';
 
 function renderTrades() {
   const container = document.getElementById('tradeTicker');
+  const barSection = document.getElementById('liveTradesSection');
   if (!container) return;
 
-  if (!allTrades || allTrades.length === 0) {
-    container.innerHTML = '<span style="color: var(--text-muted); font-size: 12px; padding: 4px 12px;">Waiting for first live trade...</span>';
+  // Only show genuine verified trades with valid symbols (never generic '$TOKEN' or empty amounts)
+  const validTrades = (allTrades || []).filter(t => t && t.tokenSymbol && t.tokenSymbol !== 'TOKEN' && t.cngnAmount > 0);
+
+  if (validTrades.length === 0) {
+    if (barSection) barSection.style.display = 'none';
+    container.innerHTML = '';
     lastRenderedTradesSig = 'empty';
     return;
   }
 
+  // Show bar when genuine verified trades exist
+  if (barSection) barSection.style.display = 'block';
+
   // Create signature of trade data so background 3s polling doesn't reset the marquee translation
-  const currentSig = allTrades.slice(0, 15).map(t => (t.id || t.txHash || '') + '_' + t.cngnAmount).join('|');
+  const currentSig = validTrades.slice(0, 20).map(t => (t.id || t.txHash || '') + '_' + t.tokenSymbol + '_' + t.cngnAmount).join('|');
   if (currentSig === lastRenderedTradesSig) return;
   lastRenderedTradesSig = currentSig;
 
-  const tradesToDisplay = allTrades.slice(0, 15);
+  const tradesToDisplay = validTrades.slice(0, 20);
   const renderItem = (tr) => {
     const isBuy = tr.isBuy;
     const badgeColor = isBuy ? 'var(--kobo-green)' : '#F87171';
@@ -388,12 +446,10 @@ function renderTrades() {
 
   const baseHtml = tradesToDisplay.map(renderItem).join('');
   let sequence = baseHtml;
-  if (tradesToDisplay.length < 5) {
-    sequence = baseHtml + baseHtml + baseHtml;
+  if (tradesToDisplay.length >= 2 && tradesToDisplay.length < 5) {
+    sequence = baseHtml + baseHtml;
   }
-
-  // Duplicate sequence for a seamless, jump-free loop
-  container.innerHTML = sequence + sequence;
+  container.innerHTML = sequence;
 }
 
 // Friendly error message parser for on-chain reverts
@@ -837,7 +893,14 @@ window.openTradeModal = async function(tokenAddress) {
   }
 
   // Basic Header info
-  document.getElementById('tradeTokenImage').src = resolveIpfsUrl(selectedToken.imageUri);
+  const tradeImg = document.getElementById('tradeTokenImage');
+  if (tradeImg) {
+    tradeImg.src = resolveIpfsUrl(selectedToken.imageUri);
+    tradeImg.onerror = () => {
+      tradeImg.onerror = null;
+      tradeImg.src = generateCoinAvatar(selectedToken.symbol, selectedToken.name, selectedToken.cultureTag);
+    };
+  }
   document.getElementById('tradeTokenName').innerText = selectedToken.name;
   document.getElementById('tradeTokenSymbol').innerText = '$' + selectedToken.symbol;
   
@@ -1423,6 +1486,7 @@ document.getElementById('tradeForm').addEventListener('submit', async (e) => {
             body: JSON.stringify({
               txHash: swapTx.hash,
               tokenAddress: selectedToken.address,
+              tokenSymbol: selectedToken.symbol,
               isBuy: true,
               amountCngn: amount,
               tokenAmount: tokensExpectedNum,
@@ -1541,6 +1605,7 @@ document.getElementById('tradeForm').addEventListener('submit', async (e) => {
             body: JSON.stringify({
               txHash: swapTx.hash,
               tokenAddress: selectedToken.address,
+              tokenSymbol: selectedToken.symbol,
               isBuy: false,
               amountCngn: cngnExpectedNum,
               tokenAmount: amount,
@@ -1645,6 +1710,7 @@ document.getElementById('tradeForm').addEventListener('submit', async (e) => {
           body: JSON.stringify({
             txHash: receipt.hash,
             tokenAddress: selectedToken.address,
+            tokenSymbol: selectedToken.symbol,
             isBuy: true,
             amountCngn: amount,
             tokenAmount: Math.round(amount / (selectedToken.priceKobo / 100)),
@@ -1718,6 +1784,7 @@ document.getElementById('tradeForm').addEventListener('submit', async (e) => {
           body: JSON.stringify({
             txHash: receipt.hash,
             tokenAddress: selectedToken.address,
+            tokenSymbol: selectedToken.symbol,
             isBuy: false,
             amountCngn: approxSellCngn,
             tokenAmount: amount,
