@@ -466,7 +466,12 @@ async function getTokensWithChainData() {
             item.priceKobo = priceNaira * 100;
             item.priceCngn = priceNaira;
             item.marketCapNaira = priceNaira * 1000000000;
+            item.hasLiquidity = true;
+          } else {
+            item.hasLiquidity = false;
           }
+          item.cngnReserve = cngnRes || 0;
+          item.tokenReserve = tokRes || 0;
         }
       } catch (ammErr) {}
     }
@@ -599,7 +604,55 @@ const server = http.createServer(async (req, res) => {
     }
 
     try {
-      const row = db.prepare('SELECT * FROM tokens WHERE LOWER(address) = LOWER(?)').get(address);
+      let row = db.prepare('SELECT * FROM tokens WHERE LOWER(address) = LOWER(?)').get(address);
+      if (!row) {
+        // Fallback 1: Query persistent Firestore cloud storage
+        try {
+          const fDoc = await firebaseDb.getTokenFirestore(address);
+          if (fDoc) {
+            row = {
+              address: fDoc.address,
+              name: fDoc.name,
+              symbol: fDoc.symbol,
+              description: fDoc.description,
+              image_uri: fDoc.imageUri,
+              culture_tag: fDoc.cultureTag,
+              creator: fDoc.creator,
+              created_at: fDoc.createdAt
+            };
+            db.prepare(`
+              INSERT OR IGNORE INTO tokens (address, name, symbol, description, image_uri, culture_tag, creator, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(row.address, row.name, row.symbol, row.description || '', row.image_uri || '', row.culture_tag || 'Meme', row.creator || '', row.created_at || Date.now());
+          }
+        } catch (fErr) {}
+      }
+
+      // Fallback 2: Query on-chain bonding curve
+      if (!row && FACTORY_ADDRESS) {
+        try {
+          const provider = getProvider();
+          const curve = new ethers.Contract(FACTORY_ADDRESS, KOBO_BONDING_CURVE_ABI, provider);
+          const onChain = await curve.tokens(address);
+          if (onChain && onChain[0] && onChain[0] !== ethers.ZeroAddress) {
+            row = {
+              address: onChain[0],
+              name: onChain[1],
+              symbol: onChain[2],
+              image_uri: onChain[3],
+              description: onChain[4],
+              creator: onChain[5],
+              culture_tag: 'Meme',
+              created_at: Number(onChain[11]) * 1000 || Date.now()
+            };
+            db.prepare(`
+              INSERT OR IGNORE INTO tokens (address, name, symbol, description, image_uri, culture_tag, creator, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(row.address, row.name, row.symbol, row.description || '', row.image_uri || '', row.culture_tag || 'Meme', row.creator || '', row.created_at || Date.now());
+          }
+        } catch (cErr) {}
+      }
+
       if (!row) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: false, message: 'Token not found' }));
@@ -682,7 +735,12 @@ const server = http.createServer(async (req, res) => {
               tokenData.priceKobo = priceNaira * 100;
               tokenData.priceCngn = priceNaira;
               tokenData.marketCapNaira = priceNaira * 1000000000;
+              tokenData.hasLiquidity = true;
+            } else {
+              tokenData.hasLiquidity = false;
             }
+            tokenData.cngnReserve = cngnRes || 0;
+            tokenData.tokenReserve = tokRes || 0;
           }
         } catch (e) {}
       }
@@ -957,6 +1015,45 @@ const server = http.createServer(async (req, res) => {
             const tx = await cngnContract.transfer(traderAddress, cngnUnits);
             dispatchTxHash = tx.hash;
             console.log(`✅ [DEX SWAP SELL] Dispatched cNGN to ${traderAddress}, tx: ${dispatchTxHash}`);
+
+            // Automatically seed AMM pool with received tokens + matching cNGN if pool has 0 reserves
+            if (AMM_ROUTER_ADDRESS && AMM_FACTORY_ADDRESS) {
+              try {
+                const factory = new ethers.Contract(AMM_FACTORY_ADDRESS, KOBO_AMM_FACTORY_ABI, deployerWallet);
+                const pairAddr = await factory.getPair(CNGN_ADDRESS, tokenAddress);
+                if (pairAddr && pairAddr !== ethers.ZeroAddress) {
+                  const pair = new ethers.Contract(pairAddr, KOBO_AMM_PAIR_ABI, deployerWallet);
+                  const [r0, r1] = await pair.getReserves();
+                  if (r0 === 0n && r1 === 0n) {
+                    console.log(`🌊 [AMM Auto-Seed] Seeding initial pool for $${symbol} with received tokens...`);
+                    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, deployerWallet);
+                    const tokBal = await tokenContract.balanceOf(deployerWallet.address);
+                    const cngnBal = await cngnContract.balanceOf(deployerWallet.address);
+                    const seedCngn = cngnUnits > cngnBal ? cngnBal : cngnUnits;
+                    if (tokBal > 0n && seedCngn > 0n) {
+                      await (await cngnContract.approve(AMM_ROUTER_ADDRESS, ethers.MaxUint256)).wait();
+                      await (await tokenContract.approve(AMM_ROUTER_ADDRESS, ethers.MaxUint256)).wait();
+                      const router = new ethers.Contract(AMM_ROUTER_ADDRESS, KOBO_AMM_ROUTER_ABI, deployerWallet);
+                      const deadline = Math.floor(Date.now() / 1000) + 1200;
+                      const addTx = await router.addLiquidity(
+                        CNGN_ADDRESS,
+                        tokenAddress,
+                        seedCngn,
+                        tokBal,
+                        0,
+                        0,
+                        deployerWallet.address,
+                        deadline
+                      );
+                      await addTx.wait();
+                      console.log(`✅ [AMM Auto-Seed] Successfully seeded pool ${pairAddr} (tx: ${addTx.hash})`);
+                    }
+                  }
+                }
+              } catch (seedErr) {
+                console.warn('Auto-seed after sell notice:', seedErr.message);
+              }
+            }
           } catch (cErr) {
             console.warn('DEX swap sell dispatch error:', cErr.message);
           }
