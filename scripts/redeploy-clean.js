@@ -59,30 +59,40 @@ async function main() {
   const cngnAddress = await mockCngn.getAddress();
   console.log(`✅ MockCNGN deployed at: ${cngnAddress}`);
 
-  // 2. Deploy KoboBondingCurve
-  console.log('\n📦 2/4 Deploying KoboBondingCurve Factory & Engine...');
   const treasury = wallet.address;
-  const CurveFactory = new ethers.ContractFactory(curveArtifact.abi, curveArtifact.bytecode, wallet);
-  const bondingCurve = await CurveFactory.deploy(cngnAddress, treasury);
-  await bondingCurve.waitForDeployment();
-  const bondingCurveAddress = await bondingCurve.getAddress();
-  console.log(`✅ KoboBondingCurve deployed at: ${bondingCurveAddress}`);
 
-  // 3. Deploy KoboAmmFactory
-  console.log('\n📦 3/4 Deploying KoboAmmFactory (Decentralized Exchange)...');
+  // 2. Deploy KoboAmmFactory
+  console.log('\n📦 2/4 Deploying KoboAmmFactory (Decentralized Exchange)...');
   const AmmFactoryContract = new ethers.ContractFactory(factoryArtifact.abi, factoryArtifact.bytecode, wallet);
   const ammFactory = await AmmFactoryContract.deploy(treasury);
   await ammFactory.waitForDeployment();
   const ammFactoryAddress = await ammFactory.getAddress();
   console.log(`✅ KoboAmmFactory deployed at: ${ammFactoryAddress}`);
 
-  // 4. Deploy KoboAmmRouter
-  console.log('\n📦 4/4 Deploying KoboAmmRouter (Automated Swaps & Liquidity)...');
+  // 3. Deploy KoboAmmRouter
+  console.log('\n📦 3/4 Deploying KoboAmmRouter (Automated Swaps & Liquidity)...');
   const AmmRouterContract = new ethers.ContractFactory(routerArtifact.abi, routerArtifact.bytecode, wallet);
   const ammRouter = await AmmRouterContract.deploy(ammFactoryAddress);
   await ammRouter.waitForDeployment();
   const ammRouterAddress = await ammRouter.getAddress();
   console.log(`✅ KoboAmmRouter deployed at: ${ammRouterAddress}`);
+
+  // 4. Deploy KoboBondingCurve with Atomic DEX Seeding Built-In
+  console.log('\n📦 4/4 Deploying KoboBondingCurve with Autonomous AMM Seeding...');
+  const CurveFactory = new ethers.ContractFactory(curveArtifact.abi, curveArtifact.bytecode, wallet);
+  const bondingCurve = await CurveFactory.deploy(cngnAddress, treasury, ammRouterAddress);
+  await bondingCurve.waitForDeployment();
+  const bondingCurveAddress = await bondingCurve.getAddress();
+  console.log(`✅ KoboBondingCurve deployed at: ${bondingCurveAddress}`);
+
+  // Configure router explicitly on bonding curve
+  try {
+    const setRouterTx = await bondingCurve.setAmmRouter(ammRouterAddress);
+    await setRouterTx.wait();
+    console.log(`🔗 Configured AMM Router on KoboBondingCurve: ${ammRouterAddress}`);
+  } catch (rErr) {
+    console.warn('Router config warning:', rErr.message);
+  }
 
   // Verify that 0 tokens are created
   const totalTokens = await bondingCurve.allTokensLength();
@@ -140,6 +150,29 @@ async function main() {
     } catch (dbErr) {
       console.warn('Note on clearing SQLite:', dbErr.message);
     }
+  }
+
+  // Clear stale test tokens and trades from Firestore cloud storage
+  try {
+    const { initializeApp, getApps } = require('firebase/app');
+    const { getFirestore, collection, getDocs, deleteDoc, doc } = require('firebase/firestore');
+    const firebaseConfig = {
+      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyC2OPvnOW46HusWD-Y452Lfu1vYs4RVYrI",
+      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "kobo-40800"
+    };
+    const fApp = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
+    const fDb = getFirestore(fApp);
+    const tokenDocs = await getDocs(collection(fDb, 'tokens'));
+    for (const d of tokenDocs.docs) {
+      await deleteDoc(doc(fDb, 'tokens', d.id));
+    }
+    const tradeDocs = await getDocs(collection(fDb, 'trades'));
+    for (const d of tradeDocs.docs) {
+      await deleteDoc(doc(fDb, 'trades', d.id));
+    }
+    console.log(`Cleaned Firestore: ${tokenDocs.size} old tokens and ${tradeDocs.size} old trades purged.`);
+  } catch (fErr) {
+    console.warn('Note on clearing Firestore:', fErr.message);
   }
 
   console.log('\n======================================================');

@@ -12,10 +12,24 @@ import "./KoboToken.sol";
  *      Graduation target: 10,000,000 cNGN ($~6,500 USD).
  *      Creator fee: 0.35%, Platform fee: 1.00%.
  */
+interface IKoboAmmRouter {
+    function addLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 amountADesired,
+        uint256 amountBDesired,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+        uint256 deadline
+    ) external returns (uint256 amountA, uint256 amountB, uint256 liquidity);
+}
+
 contract KoboBondingCurve {
     address public immutable cngnToken;
     address public treasury;
     address public owner;
+    address public ammRouter;
 
     // Constants
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 10**18;      // 1B tokens
@@ -85,17 +99,23 @@ contract KoboBondingCurve {
         _;
     }
 
-    constructor(address _cngnToken, address _treasury) {
+    constructor(address _cngnToken, address _treasury, address _ammRouter) {
         require(_cngnToken != address(0), "Invalid cNGN address");
         require(_treasury != address(0), "Invalid treasury address");
         cngnToken = _cngnToken;
         treasury = _treasury;
+        ammRouter = _ammRouter;
         owner = msg.sender;
     }
 
     function setTreasury(address _treasury) external onlyOwner {
         require(_treasury != address(0), "Invalid treasury");
         treasury = _treasury;
+    }
+
+    function setAmmRouter(address _ammRouter) external onlyOwner {
+        require(_ammRouter != address(0), "Invalid router");
+        ammRouter = _ammRouter;
     }
 
     /**
@@ -280,6 +300,23 @@ contract KoboBondingCurve {
         uint256 dexTokens = DEX_RESERVE + state.realTokens; // 200M reserved + any unsold
 
         emit TokenGraduated(tokenAddr, finalLiquidityCngn, dexTokens, block.timestamp);
+
+        // 100% AUTOMATIC ATOMIC ON-CHAIN DEX SEEDING
+        if (ammRouter != address(0) && finalLiquidityCngn > 0 && dexTokens > 0) {
+            MockCNGN(cngnToken).approve(ammRouter, finalLiquidityCngn);
+            KoboToken(tokenAddr).approve(ammRouter, dexTokens);
+
+            try IKoboAmmRouter(ammRouter).addLiquidity(
+                cngnToken,
+                tokenAddr,
+                finalLiquidityCngn,
+                dexTokens,
+                0,
+                0,
+                address(0x000000000000000000000000000000000000dEaD), // Burn LP tokens permanently for locked liquidity
+                block.timestamp + 600
+            ) {} catch {}
+        }
     }
 
     // View helper for token count

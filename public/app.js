@@ -756,8 +756,8 @@ window.seedInitialDexPool = async function() {
   const signer = await getSigner();
   if (!signer) return;
 
-  const ammRouterAddress = appConfig?.ammRouterAddress || '0xA862739c8755fa83FE1B75021Af6f7D438EC6c80';
-  const cngnAddress = appConfig?.cngnAddress || '0xDdc8B9e1Afdcc3136212c8642d253285c2Bc237c';
+  const ammRouterAddress = appConfig?.ammRouterAddress || '0x9f2b67634A06AAfbB36aECcb764F597b7111BFFE';
+  const cngnAddress = appConfig?.cngnAddress || '0x2ae29c2D91896356D8066C347008e2764d599F59';
   const priceCngn = (selectedToken.priceKobo || 0.0025) / 100;
 
   const suggestedTokens = Math.min(Math.floor(userTokenBalance * 0.1) || 1000000, 50000000);
@@ -1563,16 +1563,16 @@ document.getElementById('tradeForm').addEventListener('submit', async (e) => {
       return;
     }
 
-    const curveAddress = appConfig?.bondingCurveAddress || '0x50300237A5c8AFb7d7D56F8c08FBaa22EB92E203';
-    const cngnAddress = appConfig?.cngnAddress || '0xDdc8B9e1Afdcc3136212c8642d253285c2Bc237c';
+    const curveAddress = appConfig?.bondingCurveAddress || '0x57620fd472BEdD6f481aA98cad48F870Fec7E745';
+    const cngnAddress = appConfig?.cngnAddress || '0x2ae29c2D91896356D8066C347008e2764d599F59';
     const treasuryAddress = appConfig?.treasuryAddress || '0x959C2c33419b009ce02113BFAee45d4ae72981f8';
 
     // ========================================================
     // PATHWAY A: GRADUATED COIN (100% ON-CHAIN KOBO AMM DEX ROUTE)
     // ========================================================
     if (selectedToken.graduated) {
-      const ammRouterAddress = appConfig?.ammRouterAddress || '0xA862739c8755fa83FE1B75021Af6f7D438EC6c80';
-      const ammFactoryAddress = appConfig?.ammFactoryAddress || '0x01aEA417df786883364721Af2A8238bf02d1AD2F';
+      const ammRouterAddress = appConfig?.ammRouterAddress || '0x9f2b67634A06AAfbB36aECcb764F597b7111BFFE';
+      const ammFactoryAddress = appConfig?.ammFactoryAddress || '0x60859E47929AD7cbd1ED1Bc4EDbdA8225Cf1dd45';
       const routerContract = new ethers.Contract(ammRouterAddress, KOBO_AMM_ROUTER_ABI, signer);
 
       // Verify or initialize AMM Liquidity Pair and check on-chain reserves
@@ -2831,7 +2831,7 @@ if (btnExecuteSend) {
         });
       } else if (selected === 'cngn') {
         assetName = 'cNGN';
-        const cngnAddr = appConfig?.cngnAddress || '0xDdc8B9e1Afdcc3136212c8642d253285c2Bc237c';
+        const cngnAddr = appConfig?.cngnAddress || '0x2ae29c2D91896356D8066C347008e2764d599F59';
         const cngnContract = new ethers.Contract(cngnAddr, CNGN_ABI, signer);
         const units = ethers.parseUnits(amount.toString(), 6);
         tx = await cngnContract.transfer(toAddress, units);
@@ -3448,7 +3448,7 @@ document.getElementById('createCoinForm').addEventListener('submit', async (e) =
       return;
     }
 
-    const curveAddress = appConfig?.bondingCurveAddress || '0x50300237A5c8AFb7d7D56F8c08FBaa22EB92E203';
+    const curveAddress = appConfig?.bondingCurveAddress || '0x57620fd472BEdD6f481aA98cad48F870Fec7E745';
     const factory = new ethers.Contract(curveAddress, KOBO_CURVE_ABI, signer);
 
     showCreateCoinStatus('⏳ Please confirm the token deployment transaction in your wallet...', 'info');

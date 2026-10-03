@@ -1,14 +1,14 @@
 {
   "network": "base-sepolia",
   "chainId": 84532,
-  "cngnAddress": "0xDdc8B9e1Afdcc3136212c8642d253285c2Bc237c",
-  "bondingCurveAddress": "0x50300237A5c8AFb7d7D56F8c08FBaa22EB92E203",
+  "cngnAddress": "0x2ae29c2D91896356D8066C347008e2764d599F59",
+  "bondingCurveAddress": "0x57620fd472BEdD6f481aA98cad48F870Fec7E745",
   "treasuryAddress": "0x959C2c33419b009ce02113BFAee45d4ae72981f8",
-  "ammFactoryAddress": "0x01aEA417df786883364721Af2A8238bf02d1AD2F",
-  "ammRouterAddress": "0xA862739c8755fa83FE1B75021Af6f7D438EC6c80",
-  "deployedAt": "2026-10-01T17:25:46.887Z",
-  "basescanCngn": "https://sepolia.basescan.org/address/0xDdc8B9e1Afdcc3136212c8642d253285c2Bc237c",
-  "basescanBondingCurve": "https://sepolia.basescan.org/address/0x50300237A5c8AFb7d7D56F8c08FBaa22EB92E203",
-  "basescanAmmFactory": "https://sepolia.basescan.org/address/0x01aEA417df786883364721Af2A8238bf02d1AD2F",
-  "basescanAmmRouter": "https://sepolia.basescan.org/address/0xA862739c8755fa83FE1B75021Af6f7D438EC6c80"
+  "ammFactoryAddress": "0x60859E47929AD7cbd1ED1Bc4EDbdA8225Cf1dd45",
+  "ammRouterAddress": "0x9f2b67634A06AAfbB36aECcb764F597b7111BFFE",
+  "deployedAt": "2026-10-03T16:39:27.359Z",
+  "basescanCngn": "https://sepolia.basescan.org/address/0x2ae29c2D91896356D8066C347008e2764d599F59",
+  "basescanBondingCurve": "https://sepolia.basescan.org/address/0x57620fd472BEdD6f481aA98cad48F870Fec7E745",
+  "basescanAmmFactory": "https://sepolia.basescan.org/address/0x60859E47929AD7cbd1ED1Bc4EDbdA8225Cf1dd45",
+  "basescanAmmRouter": "https://sepolia.basescan.org/address/0x9f2b67634A06AAfbB36aECcb764F597b7111BFFE"
 }
